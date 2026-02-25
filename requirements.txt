@@ -1,6 +1,7 @@
 # PDF Parser Project - Python Dependencies
 # Phase 1: Core extraction engine with modular components
 # Phase 2: Flask backend API and Docker containerization
+# Phase 4: Comprehensive testing and CI/CD
 
 # Core PDF Processing
 pdfplumber==0.10.3
@@ -20,3 +21,10 @@ Werkzeug==2.3.7
 flask-cors==4.0.0
 python-dotenv==1.0.0
 gunicorn==21.2.0
+
+# Phase 4: Testing Framework and Tools
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-flask==1.2.0
+pytest-mock==3.12.0
+coverage==7.3.2

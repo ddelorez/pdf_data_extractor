@@ -1,0 +1,107 @@
+name: Docker Build Verification
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'Dockerfile'
+      - 'frontend/Dockerfile'
+      - 'docker-compose.yml'
+      - 'requirements.txt'
+      - 'frontend/package.json'
+      - '.github/workflows/docker-build.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'Dockerfile'
+      - 'frontend/Dockerfile'
+      - 'docker-compose.yml'
+
+jobs:
+  build:
+    name: Build and Test Docker Images
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Build backend Docker image
+        run: |
+          docker build -t pdf-extractor-backend:test \
+            --target production \
+            -f Dockerfile .
+      
+      - name: Build frontend Docker image
+        run: |
+          docker build -t pdf-extractor-frontend:test \
+            -f frontend/Dockerfile frontend/
+      
+      - name: List built images
+        run: docker images | grep pdf-extractor
+  
+  docker-compose:
+    name: Test Docker Compose Setup
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build images with docker-compose
+        run: docker-compose build
+      
+      - name: Start services
+        run: |
+          docker-compose up -d
+          sleep 5
+      
+      - name: Check backend health
+        run: |
+          curl -f http://localhost:5000/api/health || exit 1
+        continue-on-error: true
+      
+      - name: Check frontend accessibility
+        run: |
+          curl -f http://localhost:3000 || exit 1
+        continue-on-error: true
+      
+      - name: View service logs
+        if: always()
+        run: |
+          echo "=== Backend logs ==="
+          docker-compose logs backend || true
+          echo "=== Frontend logs ==="
+          docker-compose logs frontend || true
+      
+      - name: Stop services
+        if: always()
+        run: docker-compose down -v
+
+  security:
+    name: Docker Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build backend image for scanning
+        run: docker build -t pdf-extractor-backend:scan -f Dockerfile .
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'pdf-extractor-backend:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
