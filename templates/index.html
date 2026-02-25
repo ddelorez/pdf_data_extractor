@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Extractor API - Phase 2</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 20px;
+        }
+        
+        h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .status {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .status-text {
+            color: #2e7d32;
+            font-weight: 600;
+        }
+        
+        .section {
+            margin: 30px 0;
+        }
+        
+        .section-title {
+            font-size: 1.3em;
+            color: #667eea;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .endpoint {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 3px solid #667eea;
+        }
+        
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-weight: 600;
+            font-size: 0.85em;
+            margin-right: 10px;
+            color: white;
+        }
+        
+        .method.post {
+            background: #ff9800;
+        }
+        
+        .method.get {
+            background: #2196f3;
+        }
+        
+        .endpoint-path {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .description {
+            margin: 10px 0 5px 0;
+            color: #666;
+            font-size: 0.95em;
+        }
+        
+        .links {
+            margin: 30px 0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        a {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.3s;
+            font-weight: 600;
+        }
+        
+        a:hover {
+            background: #764ba2;
+        }
+        
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #d32f2f;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 0.9em;
+        }
+        
+        .feature-list {
+            list-style: none;
+            margin: 15px 0;
+        }
+        
+        .feature-list li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+            color: #555;
+        }
+        
+        .feature-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #4caf50;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PDF Extractor API</h1>
+            <p class="subtitle">Phase 2: Backend with Docker Containerization</p>
+        </div>
+        
+        <div class="status">
+            <div class="status-text">✓ API Server is Running</div>
+            <p style="margin-top: 5px; font-size: 0.9em;">Version 2.0 | Ready for production deployment</p>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">Overview</h2>
+            <p style="color: #666; line-height: 1.8; margin-bottom: 10px;">
+                This is a Flask-based REST API for extracting production data from PDF documents. 
+                The system processes PDF files, extracts well production records, validates the data, 
+                and outputs results in Excel and CSV formats.
+            </p>
+            <ul class="feature-list">
+                <li>PDF file upload with batch processing support</li>
+                <li>Data extraction using Phase 1 extraction engine</li>
+                <li>Automatic data validation and deduplication</li>
+                <li>Excel and CSV output generation</li>
+                <li>Job tracking with real-time status updates</li>
+                <li>Docker containerization for scalable deployment</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">API Endpoints</h2>
+            
+            <div class="endpoint">
+                <div>
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/api/extract</span>
+                </div>
+                <p class="description">Upload PDF files for extraction</p>
+                <code>curl -F "files=@document.pdf" http://localhost:5000/api/extract</code>
+            </div>
+            
+            <div class="endpoint">
+                <div>
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/api/process/&lt;job_id&gt;</span>
+                </div>
+                <p class="description">Process uploaded PDFs and generate outputs</p>
+                <code>curl -X POST http://localhost:5000/api/process/job-uuid</code>
+            </div>
+            
+            <div class="endpoint">
+                <div>
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/api/status/&lt;job_id&gt;</span>
+                </div>
+                <p class="description">Check processing status and progress</p>
+                <code>curl http://localhost:5000/api/status/job-uuid</code>
+            </div>
+            
+            <div class="endpoint">
+                <div>
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/download/&lt;job_id&gt;/output.xlsx</span>
+                </div>
+                <p class="description">Download processed Excel file</p>
+            </div>
+            
+            <div class="endpoint">
+                <div>
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/download/&lt;job_id&gt;/output.csv</span>
+                </div>
+                <p class="description">Download processed CSV file</p>
+            </div>
+            
+            <div class="endpoint">
+                <div>
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/api/health</span>
+                </div>
+                <p class="description">Health check for Docker/Kubernetes monitoring</p>
+                <code>curl http://localhost:5000/api/health</code>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">Documentation</h2>
+            <div class="links">
+                <a href="/api/docs">View API Documentation</a>
+                <a href="https://github.com" target="_blank">GitHub Repository</a>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">Quick Start</h2>
+            <ol style="margin: 15px 0; padding-left: 20px; color: #666; line-height: 1.8;">
+                <li><strong>Upload files:</strong> Use <code>POST /api/extract</code> with multipart form data</li>
+                <li><strong>Process:</strong> Call <code>POST /api/process/{job_id}</code> with the returned job_id</li>
+                <li><strong>Check status:</strong> Monitor progress with <code>GET /api/status/{job_id}</code></li>
+                <li><strong>Download:</strong> Get results from <code>/download/{job_id}/output.xlsx</code> or <code>.csv</code></li>
+            </ol>
+        </div>
+        
+        <div class="footer">
+            <p>PDF Extractor API v2.0 | Powered by Flask + Docker</p>
+            <p style="margin-top: 10px; font-size: 0.85em;">Phase 1: Extraction Engine | Phase 2: Flask Backend | Phase 3: React Frontend</p>
+        </div>
+    </div>
+</body>
+</html>

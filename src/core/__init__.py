@@ -1,0 +1,3 @@
+"""
+Core PDF extraction module
+"""

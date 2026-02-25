@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    container_name: pdf-extractor-api
+    
+    # Expose ports (only internally to frontend)
+    ports:
+      - "5000:5000"
+    
+    # Environment configuration
+    environment:
+      # Flask Configuration
+      FLASK_ENV: production
+      FLASK_DEBUG: 0
+      SECRET_KEY: ${SECRET_KEY:-your-secure-secret-key-here}
+      
+      # File Upload Configuration
+      MAX_UPLOAD_SIZE: 104857600  # 100 MB
+      UPLOAD_FOLDER: /app/uploads
+      TEMPLATE_FOLDER: /app/templates
+      OUTPUT_FOLDER: /app/outputs
+      
+      # Logging
+      LOG_LEVEL: INFO
+      
+      # Server
+      FLASK_HOST: 0.0.0.0
+      FLASK_PORT: 5000
+      
+      # CORS Configuration
+      CORS_ORIGINS: "*"
+    
+    # Volume mounts
+    volumes:
+      # Temporary file storage for uploads
+      - ./uploads:/app/uploads
+      
+      # Excel templates
+      - ./templates:/app/templates
+      
+      # Processed output files
+      - ./outputs:/app/outputs
+      
+      # Logs directory
+      - ./logs:/app/logs
+      
+      # Source code (for development, can be removed for production)
+      - ./src:/app/src:ro
+    
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Resource constraints (optional)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+    
+    # Network configuration
+    networks:
+      - pdf-extractor-network
+  
+  # Frontend React Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    
+    container_name: pdf-extractor-frontend
+    
+    # Expose ports
+    ports:
+      - "3000:3000"
+    
+    # Depends on backend
+    depends_on:
+      backend:
+        condition: service_healthy
+    
+    # Volume mounts for development (optional, comment out for production)
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+    
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Resource constraints (optional)
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    
+    # Network configuration
+    networks:
+      - pdf-extractor-network
+
+# Define custom network
+networks:
+  pdf-extractor-network:
+    driver: bridge
+
+# Named volumes (optional, for persistent storage)
+volumes:
+  uploads:
+  outputs:
+  logs:

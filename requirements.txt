@@ -1,0 +1,22 @@
+# PDF Parser Project - Python Dependencies
+# Phase 1: Core extraction engine with modular components
+# Phase 2: Flask backend API and Docker containerization
+
+# Core PDF Processing
+pdfplumber==0.10.3
+
+# Excel Output
+openpyxl==3.10.10
+
+# Data Processing
+pandas==2.0.3
+
+# Date Parsing
+python-dateutil==2.8.2
+
+# Phase 2: Flask Backend and Deployment
+Flask==2.3.3
+Werkzeug==2.3.7
+flask-cors==4.0.0
+python-dotenv==1.0.0
+gunicorn==21.2.0
