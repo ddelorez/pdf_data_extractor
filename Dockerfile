@@ -17,7 +17,7 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 
 
 # Stage 2: Runtime - Minimal production image
-FROM python:3.10-slim
+FROM python:3.10-slim as production
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
