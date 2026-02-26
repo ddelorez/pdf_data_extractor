@@ -30,7 +30,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN useradd -m -u 1000 appuser
 
 # Install curl for healthcheck
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl gosu && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -47,8 +47,8 @@ COPY --chown=appuser:appuser . .
 RUN mkdir -p uploads outputs templates logs && \
     chown -R appuser:appuser /app
 
-# Switch to non-root user
-USER appuser
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Expose port
 EXPOSE 5000
@@ -58,6 +58,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/api/health || exit 1
 
 # Production WSGI server with gunicorn
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:5000", \
      "--workers", "4", \

@@ -45,9 +45,9 @@ def create_app(config=None):
     app.config['MAX_CONTENT_LENGTH'] = int(
         os.getenv('MAX_UPLOAD_SIZE', 104857600)  # 100 MB default
     )
-    app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'uploads')
-    app.config['TEMPLATE_FOLDER'] = os.getenv('TEMPLATE_FOLDER', 'templates')
-    app.config['OUTPUT_FOLDER'] = os.getenv('OUTPUT_FOLDER', 'outputs')
+    app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', '/app/uploads')
+    app.config['TEMPLATE_FOLDER'] = os.getenv('TEMPLATE_FOLDER', '/app/templates')
+    app.config['OUTPUT_FOLDER'] = os.getenv('OUTPUT_FOLDER', '/app/outputs')
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-not-for-production')
     app.config['JSON_SORT_KEYS'] = False
     
