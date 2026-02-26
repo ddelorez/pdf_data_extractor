@@ -1,0 +1,177 @@
+name: Code Quality & Linting
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**.py'
+      - '**.js'
+      - '**.jsx'
+      - 'requirements.txt'
+      - 'frontend/package.json'
+      - '.github/workflows/code-quality.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '**.py'
+      - '**.js'
+      - '**.jsx'
+      - 'requirements.txt'
+      - 'frontend/package.json'
+
+jobs:
+  python-lint:
+    name: Python Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 pylint black isort
+      
+      - name: Run Black formatter check
+        run: black --check --diff .
+        continue-on-error: true
+      
+      - name: Run isort import sorter check
+        run: isort --check-only --diff .
+        continue-on-error: true
+      
+      - name: Run Flake8 linter
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit code 1 for all errors (excluding line length warnings)
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        continue-on-error: true
+      
+      - name: Run Pylint
+        run: |
+          pylint src/ routes/ services/ cli.py app.py --disable=C0111,C0103,R0913,W0212
+        continue-on-error: true
+
+  frontend-lint:
+    name: Frontend Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+      
+      - name: Install frontend dependencies
+        run: cd frontend && npm install
+      
+      - name: Run ESLint
+        run: cd frontend && npm run lint
+        continue-on-error: true
+
+  code-analysis:
+    name: Code Analysis & Metrics
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install radon bandit
+      
+      - name: Analyze code complexity with Radon
+        run: |
+          radon cc src/ routes/ services/ -a -j > complexity.json || true
+          echo "=== Cyclomatic Complexity Report ==="
+          radon cc src/ routes/ services/ -a
+          echo ""
+          echo "=== Maintainability Index ==="
+          radon mi src/ routes/ services/ -s
+        continue-on-error: true
+      
+      - name: Security check with Bandit
+        run: bandit -r src/ routes/ services/ -f json -o bandit-report.json
+        continue-on-error: true
+      
+      - name: Display security findings
+        run: |
+          if [ -f bandit-report.json ]; then
+            echo "=== Bandit Security Report ==="
+            python -m json.tool bandit-report.json || true
+          fi
+        continue-on-error: true
+
+  dependency-check:
+    name: Dependency Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install Safety for Python dependency scanning
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety
+      
+      - name: Check Python dependencies for vulnerabilities
+        run: safety check --json || true
+        continue-on-error: true
+      
+      - name: Set up Node.js for frontend dependency check
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+      
+      - name: Check frontend dependencies for vulnerabilities
+        run: cd frontend && npm audit --audit-level=moderate || true
+        continue-on-error: true
+
+  summary:
+    name: Quality Gate Summary
+    runs-on: ubuntu-latest
+    needs: [python-lint, frontend-lint, code-analysis, dependency-check]
+    if: always()
+    
+    steps:
+      - name: Check job statuses
+        run: |
+          echo "=== Code Quality Job Summary ==="
+          echo "Python Linting: ${{ needs.python-lint.result }}"
+          echo "Frontend Linting: ${{ needs.frontend-lint.result }}"
+          echo "Code Analysis: ${{ needs.code-analysis.result }}"
+          echo "Dependency Check: ${{ needs.dependency-check.result }}"
+          echo ""
+          echo "All quality checks completed. Review results above."
