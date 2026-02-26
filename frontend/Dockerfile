@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -34,6 +34,8 @@ RUN addgroup -g 101 -S nginx 2>/dev/null || true && \
 # Fix permissions
 RUN chown -R nginx:nginx /usr/share/nginx/html && \
     chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/run && \
+    chown -R nginx:nginx /var/log/nginx && \
     chmod -R 755 /usr/share/nginx/html
 
 # Use non-root user

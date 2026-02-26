@@ -12,7 +12,8 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 from enum import Enum
 
-from src.config import get_logger
+from openpyxl import Workbook
+from src.config import get_logger, START_ROW, COL_MAP
 from src.core.pdf_processor import process_pdf
 from src.data.validator import validate_records
 from src.data.deduplicator import deduplicate_and_sort
@@ -20,6 +21,9 @@ from src.output.excel_writer import write_excel
 from src.output.csv_writer import write_csv
 
 logger = get_logger(__name__)
+
+# Maximum number of files allowed per batch (environment-configurable)
+MAX_BATCH_FILES = int(os.environ.get('MAX_BATCH_FILES', '50'))
 
 
 class JobStatus(Enum):
@@ -186,8 +190,8 @@ class ExtractionService:
         if not files_list:
             raise FileValidationError("No files provided")
         
-        if len(files_list) > 50:
-            raise FileValidationError("Maximum 50 files per batch")
+        if len(files_list) > MAX_BATCH_FILES:
+            raise FileValidationError(f"Maximum {MAX_BATCH_FILES} files per batch")
         
         # Create job
         job_id = str(uuid.uuid4())
@@ -293,16 +297,33 @@ class ExtractionService:
                 # Look for template.xlsx in project root
                 template = Path(__file__).parent.parent / "template.xlsx"
             
-            if not template.exists():
-                raise ProcessingError(
-                    f"Excel template not found: {template}. "
-                    "Please ensure template.xlsx exists in the project root."
-                )
-            
             # Write Excel output
             excel_output_path = self.output_folder / f"{job_id}_output.xlsx"
             try:
-                write_excel(df, template, excel_output_path)
+                if template.exists():
+                    write_excel(df, template, excel_output_path)
+                else:
+                    # Template not found — create Excel directly using openpyxl
+                    logger.warning(
+                        f"Template not found at {template}, creating Excel without template"
+                    )
+                    wb = Workbook()
+                    ws = wb.active or wb.create_sheet("Sheet")
+                    for i, row_data in enumerate(df.itertuples(index=False)):
+                        excel_row = START_ROW + i
+                        for field_name, col_number in COL_MAP.items():
+                            if hasattr(row_data, field_name):
+                                value = getattr(row_data, field_name)
+                                if field_name == "Date" and value is not None:
+                                    if not isinstance(value, datetime):
+                                        try:
+                                            value = datetime.combine(
+                                                value, datetime.min.time()
+                                            )
+                                        except Exception:
+                                            value = None
+                                ws.cell(row=excel_row, column=col_number, value=value)
+                    wb.save(str(excel_output_path))
                 job.output_excel = excel_output_path
                 logger.info(f"Excel file written: {excel_output_path}")
             except Exception as e:
@@ -325,8 +346,8 @@ class ExtractionService:
                 "records": job.records_valid,
                 "unique_wells": job.unique_wells,
                 "invalid_records": job.records_invalid,
-                "excel_url": f"/download/{job_id}/output.xlsx",
-                "csv_url": f"/download/{job_id}/output.csv",
+                "excel_url": f"/api/download/{job_id}/output.xlsx",
+                "csv_url": f"/api/download/{job_id}/output.csv",
             }
         
         except ProcessingError as e:

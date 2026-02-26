@@ -37,7 +37,7 @@ jobs:
           cache-dependency-path: 'frontend/package-lock.json'
       
       - name: Install dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm install
       
       - name: Run linting
         run: cd frontend && npm run lint --if-present
@@ -90,7 +90,7 @@ jobs:
           cache-dependency-path: 'frontend/package-lock.json'
       
       - name: Install dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm install
       
       - name: Check code style
         run: cd frontend && npm run lint --if-present

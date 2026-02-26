@@ -379,9 +379,6 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 # Navigate to application directory
 cd /opt/pdf-extractor
 
-# Pull latest base images
-docker compose pull
-
 # Build application images
 docker compose build
 

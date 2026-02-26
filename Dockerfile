@@ -29,6 +29,9 @@ ENV PYTHONUNBUFFERED=1 \
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser
 
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy Python dependencies from builder

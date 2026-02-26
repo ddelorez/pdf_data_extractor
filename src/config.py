@@ -3,6 +3,8 @@ Centralized configuration and constants for PDF Parser Project
 """
 
 import logging
+import logging.handlers
+import os
 from pathlib import Path
 
 # ========================= PATHS =========================
@@ -38,7 +40,8 @@ COL_MAP = {
 # ========================= LOGGING SETUP =========================
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 LOG_FILE = LOGS_FOLDER / "pdf_parser.log"
-LOG_LEVEL = logging.INFO
+_log_level_str = os.environ.get('LOG_LEVEL', 'INFO').upper()
+LOG_LEVEL = getattr(logging, _log_level_str, logging.INFO)
 
 def get_logger(name: str) -> logging.Logger:
     """
@@ -63,8 +66,8 @@ def get_logger(name: str) -> logging.Logger:
         console_handler.setFormatter(console_formatter)
         logger.addHandler(console_handler)
         
-        # File handler
-        file_handler = logging.FileHandler(LOG_FILE)
+        # File handler (WatchedFileHandler reopens after logrotate renames the file)
+        file_handler = logging.handlers.WatchedFileHandler(LOG_FILE)
         file_handler.setLevel(LOG_LEVEL)
         file_formatter = logging.Formatter(LOG_FORMAT)
         file_handler.setFormatter(file_formatter)
@@ -96,7 +99,7 @@ DATE_PATTERN = r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b'
 
 # ========================= DEFAULT VALUES =========================
 DEFAULT_WELL_NAME = "UNKNOWN"
-DEFAULT_TIMEOUT = 30  # seconds for PDF processing
+DEFAULT_TIMEOUT = int(os.environ.get('DEFAULT_TIMEOUT', '30'))  # seconds for PDF processing
 
 # ========================= DATAFRAME FIELDS =========================
 # Expected columns in extracted data

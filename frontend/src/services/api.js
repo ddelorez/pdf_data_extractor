@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Configure API base URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-const DOWNLOAD_BASE_URL = import.meta.env.VITE_DOWNLOAD_BASE_URL || '/download';
+const DOWNLOAD_BASE_URL = import.meta.env.VITE_DOWNLOAD_BASE_URL || '/api/download';
 
 // Create axios instance
 const apiClient = axios.create({

@@ -77,6 +77,11 @@ docker-compose.override.yml
 .coverage
 htmlcov/
 .pytest_cache/
+pytest_output.txt
+*_output.txt
+
+# Screenshots and temporary assets
+screenshots/
 
 # OS
 *.DS_Store
