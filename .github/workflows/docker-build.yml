@@ -10,6 +10,10 @@ on:
       - 'requirements.txt'
       - 'frontend/package.json'
       - '.github/workflows/docker-build.yml'
+      - 'src/**'
+      - 'app.py'
+      - 'services/**'
+      - 'routes/**'
   pull_request:
     branches: [ main, develop ]
     paths:
