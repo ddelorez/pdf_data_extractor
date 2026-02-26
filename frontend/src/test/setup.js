@@ -8,8 +8,8 @@ afterEach(() => {
 })
 
 // Mock environment variables
-process.env.VITE_API_BASE_URL = 'http://localhost:3001/api'
-process.env.VITE_DOWNLOAD_BASE_URL = 'http://localhost:3001/download'
+process.env.VITE_API_BASE_URL = 'http://localhost:5000/api'
+process.env.VITE_DOWNLOAD_BASE_URL = 'http://localhost:5000/download'
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
