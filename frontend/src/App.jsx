@@ -14,9 +14,32 @@ const App = () => {
   const [appError, setAppError] = useState(null);
   const [backendHealthy, setBackendHealthy] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Initialize from localStorage or system preference
+    const saved = localStorage.getItem('darkMode');
+    if (saved !== null) {
+      return saved === 'true';
+    }
+    // Fall back to system preference
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
 
   const fileUpload = useFileUpload();
   const polling = usePolling(jobId, 2000);
+
+  // Update localStorage and apply dark mode class when isDarkMode changes
+  useEffect(() => {
+    localStorage.setItem('darkMode', isDarkMode);
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark-mode');
+    } else {
+      document.documentElement.classList.remove('dark-mode');
+    }
+  }, [isDarkMode]);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(!isDarkMode);
+  };
 
   // Health check on mount
   useEffect(() => {
@@ -161,6 +184,19 @@ const App = () => {
       {/* Header */}
       <header className="app-header">
         <div className="header-content">
+          <div className="header-top">
+            <div className="main-title-section">
+              <h2 className="main-title">Jeff's PDF Magic</h2>
+            </div>
+            <button 
+              className="dark-mode-toggle"
+              onClick={toggleDarkMode}
+              aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={isDarkMode ? 'Light mode' : 'Dark mode'}
+            >
+              {isDarkMode ? '☀️' : '🌙'}
+            </button>
+          </div>
           <h1>PDF Production Data Extractor</h1>
           <p className="tagline">Professional extraction tool for oil and gas production data</p>
           <div className="health-indicator">

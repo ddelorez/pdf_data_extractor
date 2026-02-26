@@ -3,7 +3,7 @@
    =============================================== */
 
 :root {
-  /* Colors */
+  /* Colors - Light Mode (Default) */
   --primary-color: #0066CC;
   --accent-color: #FF6600;
   --success-color: #4CAF50;
@@ -15,6 +15,9 @@
   --text-primary: #333333;
   --text-secondary: #666666;
   --text-light: #999999;
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F5F5F5;
+  --bg-tertiary: #EEEEEE;
 
   /* Typography */
   --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -50,6 +53,25 @@
   --transition-fast: 150ms ease-in-out;
   --transition-normal: 300ms ease-in-out;
   --transition-slow: 500ms ease-in-out;
+}
+
+/* Dark Mode Variables */
+.dark-mode {
+  /* Dark Mode Colors */
+  --primary-color: #4A90E2;
+  --accent-color: #FF8C42;
+  --success-color: #66BB6A;
+  --error-color: #EF5350;
+  --warning-color: #FFA726;
+  --neutral-dark: #E0E0E0;
+  --neutral-light: #2A2A2A;
+  --neutral-border: #404040;
+  --text-primary: #E0E0E0;
+  --text-secondary: #B0B0B0;
+  --text-light: #808080;
+  --bg-primary: #1E1E1E;
+  --bg-secondary: #2A2A2A;
+  --bg-tertiary: #333333;
 }
 
 * {
@@ -111,10 +133,66 @@ body {
   margin: 0 auto;
 }
 
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.main-title-section {
+  flex: 1;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.dark-mode-toggle {
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  font-size: 24px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 50px;
+  flex-shrink: 0;
+}
+
+.dark-mode-toggle:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.05);
+}
+
+.dark-mode-toggle:active {
+  transform: scale(0.98);
+}
+
+.main-title {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.95));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 .app-header h1 {
   font-size: var(--font-size-h1);
   font-weight: 700;
   margin-bottom: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
 }
 
 .app-header .tagline {
@@ -200,10 +278,11 @@ body {
 }
 
 .upload-section {
-  background: white;
+  background: var(--bg-primary);
   border-radius: var(--radius-lg);
   padding: var(--spacing-xl);
   box-shadow: var(--shadow-md);
+  transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
 .upload-section h2 {
@@ -224,7 +303,7 @@ body {
   text-align: center;
   cursor: pointer;
   transition: all var(--transition-normal);
-  background-color: white;
+  background-color: var(--bg-primary);
   user-select: none;
 }
 
@@ -298,7 +377,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-md);
-  background: var(--neutral-light);
+  background: var(--bg-secondary);
   border-radius: var(--radius-md);
   border: 1px solid var(--neutral-border);
   transition: all var(--transition-fast);
@@ -408,13 +487,14 @@ button:disabled {
 }
 
 .secondary-btn {
-  background-color: var(--neutral-light);
+  background-color: var(--bg-secondary);
   color: var(--text-primary);
   border: 1px solid var(--neutral-border);
+  transition: all var(--transition-fast);
 }
 
 .secondary-btn:hover:not(:disabled) {
-  background-color: white;
+  background-color: var(--bg-primary);
   border-color: var(--primary-color);
 }
 
@@ -489,10 +569,11 @@ button:disabled {
 }
 
 .status-card {
-  background: white;
+  background: var(--bg-primary);
   border-radius: var(--radius-lg);
   padding: var(--spacing-xl);
   box-shadow: var(--shadow-md);
+  transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
 .status-header {
@@ -510,7 +591,7 @@ button:disabled {
 }
 
 .job-id code {
-  background: var(--neutral-light);
+  background: var(--bg-secondary);
   padding: var(--spacing-xs) var(--spacing-sm);
   border-radius: var(--radius-sm);
   font-family: 'Monaco', 'Courier New', monospace;
@@ -537,7 +618,7 @@ button:disabled {
 .progress-bar-container {
   width: 100%;
   height: 24px;
-  background: var(--neutral-light);
+  background: var(--bg-secondary);
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--neutral-border);
@@ -566,7 +647,7 @@ button:disabled {
 }
 
 .status-details {
-  background: var(--neutral-light);
+  background: var(--bg-secondary);
   padding: var(--spacing-lg);
   border-radius: var(--radius-md);
   margin-bottom: var(--spacing-lg);
@@ -643,10 +724,11 @@ button:disabled {
 }
 
 .results-card {
-  background: white;
+  background: var(--bg-primary);
   border-radius: var(--radius-lg);
   padding: var(--spacing-xl);
   box-shadow: var(--shadow-md);
+  transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
 .results-header {
@@ -681,7 +763,7 @@ button:disabled {
   gap: var(--spacing-lg);
   margin-bottom: var(--spacing-xl);
   padding: var(--spacing-lg);
-  background: var(--neutral-light);
+  background: var(--bg-secondary);
   border-radius: var(--radius-lg);
 }
 
@@ -708,7 +790,7 @@ button:disabled {
 .results-details {
   margin-bottom: var(--spacing-xl);
   padding: var(--spacing-lg);
-  background: var(--neutral-light);
+  background: var(--bg-secondary);
   border-radius: var(--radius-lg);
   border-left: 4px solid var(--primary-color);
 }
@@ -773,7 +855,7 @@ button:disabled {
 }
 
 .job-info code {
-  background: var(--neutral-light);
+  background: var(--bg-secondary);
   padding: var(--spacing-xs) var(--spacing-sm);
   border-radius: var(--radius-sm);
   font-family: 'Monaco', 'Courier New', monospace;
@@ -883,7 +965,7 @@ button:disabled {
 
 .error-details {
   margin-top: var(--spacing-md);
-  background: white;
+  background: var(--bg-primary);
   border: 1px solid var(--neutral-border);
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
@@ -941,6 +1023,15 @@ button:disabled {
 
   .app-header {
     padding: var(--spacing-lg) var(--spacing-md);
+  }
+
+  .header-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .main-title {
+    font-size: 36px;
   }
 
   .app-header h1 {
@@ -1044,6 +1135,10 @@ button:disabled {
     padding: var(--spacing-md);
   }
 
+  .main-title {
+    font-size: 28px;
+  }
+
   .app-header h1 {
     font-size: var(--font-size-h2);
   }
@@ -1125,46 +1220,27 @@ button:disabled {
   }
 }
 
+/* System preference dark mode fallback - for when toggle is not used */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --neutral-light: #1e1e1e;
-    --text-primary: #e0e0e0;
-    --text-secondary: #b0b0b0;
-    --neutral-dark: #111111;
+  :root:not(.dark-mode) {
+    /* Only apply if dark-mode class is not set */
+    --primary-color: #4A90E2;
+    --accent-color: #FF8C42;
+    --success-color: #66BB6A;
+    --error-color: #EF5350;
+    --warning-color: #FFA726;
+    --neutral-dark: #E0E0E0;
+    --neutral-light: #2A2A2A;
+    --neutral-border: #404040;
+    --text-primary: #E0E0E0;
+    --text-secondary: #B0B0B0;
+    --text-light: #808080;
+    --bg-primary: #1E1E1E;
+    --bg-secondary: #2A2A2A;
+    --bg-tertiary: #333333;
   }
 
   body {
-    background-color: #121212;
-  }
-
-  .upload-section,
-  .status-card,
-  .results-card {
-    background: #1e1e1e;
-  }
-
-  .drag-drop-zone {
-    background-color: #252525;
-  }
-
-  .drag-drop-zone:hover {
-    background-color: rgba(0, 102, 204, 0.05);
-  }
-
-  .file-item {
-    background: #252525;
-  }
-
-  .status-details,
-  .results-summary {
-    background: #252525;
-  }
-
-  .error-notification {
-    background: rgba(244, 67, 54, 0.1);
-  }
-
-  .error-details {
-    background: #1e1e1e;
+    background-color: var(--bg-primary);
   }
 }
