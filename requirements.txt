@@ -10,6 +10,7 @@ pdfplumber==0.10.3
 openpyxl==3.1.5
 
 # Data Processing
+numpy<2  # pin to 1.x for ABI compatibility with pandas 2.0.3 and pdfplumber
 pandas==2.0.3
 
 # Date Parsing
