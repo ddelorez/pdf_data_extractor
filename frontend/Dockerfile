@@ -24,6 +24,10 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Patch main nginx config for non-root operation
+RUN sed -i 's/user  nginx;/#user  nginx;/' /etc/nginx/nginx.conf && \
+    sed -i 's|pid        /run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf
+
 # Copy built React app from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
@@ -34,7 +38,6 @@ RUN addgroup -g 101 -S nginx 2>/dev/null || true && \
 # Fix permissions
 RUN chown -R nginx:nginx /usr/share/nginx/html && \
     chown -R nginx:nginx /var/cache/nginx && \
-    chown -R nginx:nginx /var/run && \
     chown -R nginx:nginx /var/log/nginx && \
     chmod -R 755 /usr/share/nginx/html
 
