@@ -2,7 +2,7 @@
 # Production-ready Flask application with gunicorn
 
 # Stage 1: Builder - Install dependencies
-FROM python:3.10-slim as builder
+FROM python:3.10-slim AS builder
 
 WORKDIR /build
 
@@ -17,7 +17,7 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 
 
 # Stage 2: Runtime - Minimal production image
-FROM python:3.10-slim as production
+FROM python:3.10-slim AS production
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
