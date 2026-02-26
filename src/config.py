@@ -67,11 +67,17 @@ def get_logger(name: str) -> logging.Logger:
         logger.addHandler(console_handler)
         
         # File handler (WatchedFileHandler reopens after logrotate renames the file)
-        file_handler = logging.handlers.WatchedFileHandler(LOG_FILE)
-        file_handler.setLevel(LOG_LEVEL)
-        file_formatter = logging.Formatter(LOG_FORMAT)
-        file_handler.setFormatter(file_formatter)
-        logger.addHandler(file_handler)
+        # Wrapped in try/except to gracefully handle permission errors when the
+        # logs directory is bind-mounted read-only (e.g., in Docker CI environments)
+        try:
+            file_handler = logging.handlers.WatchedFileHandler(LOG_FILE)
+            file_handler.setLevel(LOG_LEVEL)
+            file_formatter = logging.Formatter(LOG_FORMAT)
+            file_handler.setFormatter(file_formatter)
+            logger.addHandler(file_handler)
+        except (PermissionError, OSError):
+            # Fall back to console-only logging if file handler cannot be created
+            pass
     
     return logger
 
