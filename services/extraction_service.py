@@ -153,10 +153,13 @@ class ProcessingJob:
             "created_at": self.created_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "files_submitted": len(self.files_submitted),
+            "files_processed": self.files_processed,
             "records_extracted": self.records_extracted,
             "records_valid": self.records_valid,
             "records_invalid": self.records_invalid,
             "unique_wells": self.unique_wells,
+            "records": self.records_valid,     # alias for frontend
+            "wells": self.unique_wells,        # alias for frontend
         }
     
     def cleanup(self) -> None:
@@ -435,6 +438,7 @@ class ExtractionService:
                 except Exception as e:
                     logger.error(f"Failed to process {pdf_path.name}: {e}")
                     raise ProcessingError(f"Failed to process {pdf_path.name}: {str(e)}")
+                job.records_extracted = len(all_records)
                 job.files_processed += 1
                 self._persist_job(job)  # Persist progress update
             
