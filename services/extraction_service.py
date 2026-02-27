@@ -6,6 +6,9 @@ Wraps Phase 1 modules and manages job tracking and file lifecycle.
 import os
 import uuid
 import shutil
+import json
+import tempfile
+import threading
 import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -165,15 +168,125 @@ class ExtractionService:
         self.upload_folder.mkdir(parents=True, exist_ok=True)
         self.template_folder.mkdir(parents=True, exist_ok=True)
         self.output_folder.mkdir(parents=True, exist_ok=True)
-        
-        # Job tracking
+
+        # Job persistence directory (inside the volume-mounted output folder)
+        self.jobs_dir = self.output_folder / "jobs"
+        self.jobs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Thread safety for self.jobs dict access
+        self._lock = threading.Lock()
+
+        # Job tracking (in-memory cache)
         self.jobs: Dict[str, ProcessingJob] = {}
-        
+
+        # Restore jobs from disk on startup
+        self._reload_jobs()
+
         logger.info("ExtractionService initialized")
         logger.info(f"  Upload folder: {self.upload_folder}")
         logger.info(f"  Template folder: {self.template_folder}")
         logger.info(f"  Output folder: {self.output_folder}")
+        logger.info(f"  Jobs dir: {self.jobs_dir}")
     
+    # ------------------------------------------------------------------
+    # Job persistence helpers
+    # ------------------------------------------------------------------
+
+    def _persist_job(self, job: 'ProcessingJob') -> None:
+        """
+        Serialize a job's state to a JSON file atomically.
+
+        Writes to a temporary file then renames to avoid partial writes
+        from concurrent access or process crashes.
+        """
+        data = {
+            "job_id": job.job_id,
+            "upload_folder": str(job.upload_folder),
+            "status": job.status.value,
+            "created_at": job.created_at.isoformat(),
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "files_submitted": [str(p) for p in job.files_submitted],
+            "records_extracted": job.records_extracted,
+            "records_valid": job.records_valid,
+            "records_invalid": job.records_invalid,
+            "unique_wells": job.unique_wells,
+            "output_excel": str(job.output_excel) if job.output_excel else None,
+            "output_csv": str(job.output_csv) if job.output_csv else None,
+            "error_message": job.error_message,
+            "error_details": job.error_details,
+        }
+        job_file = self.jobs_dir / f"{job.job_id}.json"
+        try:
+            fd, tmp_path = tempfile.mkstemp(dir=str(self.jobs_dir), suffix=".tmp")
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    json.dump(data, f)
+                os.replace(tmp_path, str(job_file))
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except Exception as e:
+            logger.error(f"Failed to persist job {job.job_id}: {e}")
+
+    def _load_job(self, job_id: str) -> Optional['ProcessingJob']:
+        """
+        Deserialize a job from its JSON file on disk.
+
+        Returns a fully-restored ProcessingJob, or None if the file
+        does not exist or cannot be parsed.
+        """
+        job_file = self.jobs_dir / f"{job_id}.json"
+        if not job_file.exists():
+            return None
+        try:
+            with open(str(job_file), 'r') as f:
+                data = json.load(f)
+
+            # Reconstruct object using the current upload folder so that
+            # paths remain valid even if the container was recreated.
+            job = ProcessingJob(job_id, str(self.upload_folder))
+            job.status = JobStatus(data["status"])
+            job.created_at = datetime.fromisoformat(data["created_at"])
+            job.completed_at = (
+                datetime.fromisoformat(data["completed_at"])
+                if data.get("completed_at") else None
+            )
+            job.files_submitted = [Path(p) for p in data.get("files_submitted", [])]
+            job.records_extracted = data.get("records_extracted", 0)
+            job.records_valid = data.get("records_valid", 0)
+            job.records_invalid = data.get("records_invalid", 0)
+            job.unique_wells = data.get("unique_wells", 0)
+            job.output_excel = Path(data["output_excel"]) if data.get("output_excel") else None
+            job.output_csv = Path(data["output_csv"]) if data.get("output_csv") else None
+            job.error_message = data.get("error_message")
+            job.error_details = data.get("error_details")
+            return job
+        except Exception as e:
+            logger.error(f"Failed to load job {job_id} from disk: {e}")
+            return None
+
+    def _reload_jobs(self) -> None:
+        """
+        Scan the jobs directory on startup and restore all job files into
+        the in-memory cache.  This allows the service to recover after a
+        worker restart without losing previously submitted jobs.
+        """
+        count = 0
+        try:
+            for job_file in sorted(self.jobs_dir.glob("*.json")):
+                job_id = job_file.stem
+                job = self._load_job(job_id)
+                if job is not None:
+                    self.jobs[job_id] = job
+                    count += 1
+        except Exception as e:
+            logger.error(f"Error during job reload: {e}")
+        if count:
+            logger.info(f"Restored {count} job(s) from disk on startup")
+
     def submit_files(self, files_list: List) -> str:
         """
         Submit files for extraction processing.
@@ -223,10 +336,12 @@ class ExtractionService:
         
         if saved_count == 0:
             raise FileValidationError("No valid PDF files were uploaded")
-        
-        # Store job
-        self.jobs[job_id] = job
-        
+
+        # Store job and persist to disk (lock guards the in-memory dict)
+        with self._lock:
+            self.jobs[job_id] = job
+        self._persist_job(job)
+
         logger.info(f"Job {job_id} submitted with {saved_count} files")
         return job_id
     
@@ -244,18 +359,22 @@ class ExtractionService:
         Raises:
             ProcessingError: If processing fails
         """
-        # Get job
-        if job_id not in self.jobs:
-            raise ProcessingError(f"Job not found: {job_id}")
-        
-        job = self.jobs[job_id]
-        
+        # Get job — fall back to disk if not in the in-memory cache
+        with self._lock:
+            if job_id not in self.jobs:
+                loaded = self._load_job(job_id)
+                if loaded is None:
+                    raise ProcessingError(f"Job not found: {job_id}")
+                self.jobs[job_id] = loaded
+            job = self.jobs[job_id]
+
         if not job.files_submitted:
             raise ProcessingError("No files to process")
-        
+
         try:
             job.set_processing()
-            
+            self._persist_job(job)
+
             # Process all PDFs and collect records
             all_records = []
             for pdf_path in job.files_submitted:
@@ -339,7 +458,8 @@ class ExtractionService:
                 raise ProcessingError(f"Failed to write CSV file: {str(e)}")
             
             job.set_completed()
-            
+            self._persist_job(job)
+
             return {
                 "status": "success",
                 "job_id": job_id,
@@ -352,6 +472,7 @@ class ExtractionService:
         
         except ProcessingError as e:
             job.set_error(str(e))
+            self._persist_job(job)
             raise
         except Exception as e:
             logger.exception(f"Unexpected error processing job {job_id}")
@@ -359,6 +480,7 @@ class ExtractionService:
                 "Unexpected error during processing",
                 {"details": str(e), "type": type(e).__name__}
             )
+            self._persist_job(job)
             raise ProcessingError(f"Unexpected error: {str(e)}")
     
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
@@ -374,10 +496,14 @@ class ExtractionService:
         Raises:
             ProcessingError: If job not found
         """
-        if job_id not in self.jobs:
-            raise ProcessingError(f"Job not found: {job_id}")
-        
-        job = self.jobs[job_id]
+        with self._lock:
+            if job_id not in self.jobs:
+                loaded = self._load_job(job_id)
+                if loaded is None:
+                    raise ProcessingError(f"Job not found: {job_id}")
+                self.jobs[job_id] = loaded
+            job = self.jobs[job_id]
+
         result = job.get_status_dict()
         
         if job.error_message:
@@ -400,11 +526,14 @@ class ExtractionService:
         Raises:
             ProcessingError: If file not found
         """
-        if job_id not in self.jobs:
-            raise ProcessingError(f"Job not found: {job_id}")
-        
-        job = self.jobs[job_id]
-        
+        with self._lock:
+            if job_id not in self.jobs:
+                loaded = self._load_job(job_id)
+                if loaded is None:
+                    raise ProcessingError(f"Job not found: {job_id}")
+                self.jobs[job_id] = loaded
+            job = self.jobs[job_id]
+
         if format.lower() == 'xlsx':
             if not job.output_excel or not job.output_excel.exists():
                 raise ProcessingError("Excel output file not found")
