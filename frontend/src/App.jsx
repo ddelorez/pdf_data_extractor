@@ -5,7 +5,7 @@ import ResultsViewer from './components/ResultsViewer';
 import ErrorNotification from './components/ErrorNotification';
 import { useFileUpload } from './hooks/useFileUpload';
 import { usePolling } from './hooks/usePolling';
-import { processJob, healthCheck } from './services/api';
+import { cancelJob, healthCheck } from './services/api';
 
 const App = () => {
   const [appState, setAppState] = useState('idle'); // idle, uploading, processing, complete, error
@@ -114,6 +114,19 @@ const App = () => {
       setAppState('error');
     }
   }, [polling.status]);
+
+  const handleCancel = async () => {
+    try {
+      if (jobId) {
+        await cancelJob(jobId);
+      }
+    } catch (error) {
+      console.error('Cancel request failed:', error);
+    }
+    polling.stopPolling();
+    setAppState('idle');
+    setJobId(null);
+  };
 
   const handleProcessMore = () => {
     setAppState('idle');
@@ -241,7 +254,7 @@ const App = () => {
                 progress={polling.progress}
                 isPolling={polling.isPolling}
                 onStart={polling.startPolling}
-                onCancel={polling.stopPolling}
+                onCancel={handleCancel}
                 pollingError={polling.error}
               />
             </>

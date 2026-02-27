@@ -220,6 +220,31 @@ def get_status(job_id: str):
         }), 500
 
 
+@extraction_bp.route('/cancel/<job_id>', methods=['POST'])
+def cancel_job(job_id: str):
+    """
+    Cancel a processing job.
+
+    URL Parameters:
+        job_id: Job ID to cancel
+
+    Returns:
+        JSON: job status dict with status set to "cancelled"
+
+    Errors:
+        404: Job not found
+        500: Server error
+    """
+    try:
+        result = _service.cancel_job(job_id)
+        return jsonify(result), 200
+    except ProcessingError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error cancelling job {job_id}: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+
 @extraction_bp.route('/download/<job_id>/output.xlsx', methods=['GET'])
 def download_excel(job_id: str):
     """

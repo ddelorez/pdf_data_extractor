@@ -115,6 +115,16 @@ export const downloadCsv = async (jobId) => {
 };
 
 /**
+ * Cancel a running job
+ * @param {string} jobId - Job ID to cancel
+ * @returns {Promise<{status, message}>}
+ */
+export const cancelJob = async (jobId) => {
+  const response = await apiClient.post(`/cancel/${jobId}`);
+  return response.data;
+};
+
+/**
  * Health check for backend
  * @returns {Promise<{status, version}>}
  */

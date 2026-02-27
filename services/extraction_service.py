@@ -35,6 +35,7 @@ class JobStatus(Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     ERROR = "error"
+    CANCELLED = "cancelled"
 
 
 class ProcessingError(Exception):
@@ -81,6 +82,9 @@ class ProcessingJob:
         
         self.error_message: Optional[str] = None
         self.error_details: Optional[Dict[str, Any]] = None
+
+        self.files_processed: int = 0
+        self._cancel_requested: bool = False
         
         logger.info(f"Created ProcessingJob: {self.job_id}")
     
@@ -108,17 +112,36 @@ class ProcessingJob:
         self.error_details = details or {}
         self.completed_at = datetime.utcnow()
         logger.error(f"Job {self.job_id} error: {message}")
-    
+
+    def request_cancel(self):
+        """Request cancellation of this job."""
+        self._cancel_requested = True
+        self.status = JobStatus.CANCELLED
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self._cancel_requested
+
     def get_progress(self) -> int:
         """Get processing progress as percentage."""
         if self.status == JobStatus.COMPLETED:
             return 100
-        elif self.status == JobStatus.PROCESSING:
-            return 50  # Mid-processing
         elif self.status == JobStatus.ERROR:
             return 0
+        elif self.status == JobStatus.CANCELLED:
+            return self._calculate_file_progress()
+        elif self.status == JobStatus.PROCESSING:
+            return self._calculate_file_progress()
         else:
             return 0  # PENDING
+
+    def _calculate_file_progress(self) -> int:
+        """Calculate progress based on files processed."""
+        total = len(self.files_submitted) if self.files_submitted else 0
+        if total == 0:
+            return 0
+        # Reserve 10% for upload phase, 90% for processing
+        return min(10 + int((self.files_processed / total) * 90), 99)
     
     def get_status_dict(self) -> Dict[str, Any]:
         """Get job status as dictionary."""
@@ -214,6 +237,8 @@ class ExtractionService:
             "output_csv": str(job.output_csv) if job.output_csv else None,
             "error_message": job.error_message,
             "error_details": job.error_details,
+            "files_processed": job.files_processed,
+            "cancel_requested": job._cancel_requested,
         }
         job_file = self.jobs_dir / f"{job.job_id}.json"
         try:
@@ -263,6 +288,8 @@ class ExtractionService:
             job.output_csv = Path(data["output_csv"]) if data.get("output_csv") else None
             job.error_message = data.get("error_message")
             job.error_details = data.get("error_details")
+            job.files_processed = data.get("files_processed", 0)
+            job._cancel_requested = data.get("cancel_requested", False)
             return job
         except Exception as e:
             logger.error(f"Failed to load job {job_id} from disk: {e}")
@@ -342,10 +369,27 @@ class ExtractionService:
             self.jobs[job_id] = job
         self._persist_job(job)
 
+        # Auto-trigger background processing
+        processing_thread = threading.Thread(
+            target=self._background_process,
+            args=(job_id,),
+            daemon=True
+        )
+        processing_thread.start()
+        logger.info(f"Background processing started for job {job_id}")
+
         logger.info(f"Job {job_id} submitted with {saved_count} files")
         return job_id
+
+    def _background_process(self, job_id: str):
+        """Run process_job in a background thread."""
+        try:
+            self.process_job(job_id)
+        except Exception as e:
+            logger.error(f"Background processing failed for job {job_id}: {e}")
+            # process_job already handles setting error status
     
-    def process_job(self, job_id: str, template_path: Optional[str] = None) -> Dict[str, Any]:
+    def process_job(self, job_id: str, template_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Process uploaded PDFs for a job.
         
@@ -378,6 +422,11 @@ class ExtractionService:
             # Process all PDFs and collect records
             all_records = []
             for pdf_path in job.files_submitted:
+                # Check cancellation before processing each file
+                if job.is_cancelled:
+                    logger.info(f"Job {job_id} cancelled by user")
+                    self._persist_job(job)
+                    return
                 try:
                     records = process_pdf(pdf_path)
                     all_records.extend(records)
@@ -385,6 +434,8 @@ class ExtractionService:
                 except Exception as e:
                     logger.error(f"Failed to process {pdf_path.name}: {e}")
                     raise ProcessingError(f"Failed to process {pdf_path.name}: {str(e)}")
+                job.files_processed += 1
+                self._persist_job(job)  # Persist progress update
             
             job.records_extracted = len(all_records)
             
@@ -512,6 +563,26 @@ class ExtractionService:
         
         return result
     
+    def cancel_job(self, job_id: str) -> dict:
+        """Cancel a processing job."""
+        with self._lock:
+            job = self.jobs.get(job_id)
+            if not job:
+                job = self._load_job(job_id)
+                if job:
+                    self.jobs[job_id] = job
+
+        if not job:
+            raise ProcessingError(f"Job not found: {job_id}")
+
+        if job.status in (JobStatus.COMPLETED, JobStatus.ERROR, JobStatus.CANCELLED):
+            return job.get_status_dict()
+
+        job.request_cancel()
+        self._persist_job(job)
+        logger.info(f"Job {job_id} cancellation requested")
+        return job.get_status_dict()
+
     def get_download_path(self, job_id: str, format: str) -> Path:
         """
         Get path to download file.
