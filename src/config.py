@@ -26,15 +26,28 @@ START_ROW = 4
 # Column mapping for data fields
 # Maps field names to Excel column numbers (1-indexed)
 COL_MAP = {
-    "Well": 1,
-    "Date": 2,
-    "qo": 3,
-    "qg": 4,
-    "qw": 5,
-    "ptubing": 12,
-    "pcasing": 13,
-    "choke": 17,
-    "days_on": 22,
+    'Well': 1,         # A - Well Name
+    'Date': 2,         # B - Date
+    'qo': 3,           # C - Oil (BO)
+    'qg': 4,           # D - Gas (mcf)
+    'qw': 5,           # E - Water (BW)
+    'ptubing': 6,      # F - Tubing Pressure
+    'pcasing': 7,      # G - Casing Pressure
+    'choke': 8,        # H - Choke
+    'days_on': 9,      # I - Days On
+    'company': 10,     # J - Company
+    'field': 11,       # K - Field/Formation
+    'county': 12,      # L - County
+    'state': 13,       # M - State
+    'status': 14,      # N - Status (Active/Drilling/etc)
+    'tvd': 15,         # O - True Vertical Depth
+    'tmd': 16,         # P - Total Measured Depth
+    'afe_num': 17,     # Q - AFE Number
+    'afe_cost': 18,    # R - AFE Cost
+    'cc_cost': 19,     # S - CC Cost (Cumulative)
+    'present_op': 20,  # T - Present Operation
+    'wi': 21,          # U - Working Interest %
+    'cap_budget': 22,  # V - Capital Budget Number
 }
 
 # ========================= LOGGING SETUP =========================
@@ -90,10 +103,13 @@ WELL_NAME_PATTERNS = [
 ]
 
 # Regular expression patterns for production data extraction
+# All patterns accept both ',' and '&' as field separators to handle
+# formats like "141 BO, 6023 mcf & 1230 BW" (value & value) or
+# "141 BO, 6023 mcf, 1230 BW" (comma-separated).
 PRODUCTION_PATTERNS = [
     r'(?:Produced|Oil|BO)[:\s]*(\d+).*?(?:Gas|MCF|mcf)[:\s]*(\d+).*?(?:Water|BW)[:\s]*(\d+)',
-    r'Produced\s+(\d+)\s+BO,\s+(\d+)\s+mcfpd?.*?(\d+)\s+BW',
-    r'(\d+)\s+BO,\s+(\d+)\s+mcf.*?,\s*(\d+)\s+BW',
+    r'Produced\s+(\d+)\s+BO[,&\s]+(\d+)\s+mcfpd?.*?(\d+)\s+BW',
+    r'(\d+)\s+BO[,&\s]+(\d+)\s+mcf[,&\s]+(\d+)\s+BW',
     r'(\d+)\s*BO.*?(\d+)\s*(?:mcf|MCF).*?(\d+)\s*BW',
 ]
 
@@ -110,15 +126,28 @@ DEFAULT_TIMEOUT = int(os.environ.get('DEFAULT_TIMEOUT', '30'))  # seconds for PD
 # ========================= DATAFRAME FIELDS =========================
 # Expected columns in extracted data
 EXPECTED_FIELDS = [
-    "Well",
-    "Date",
-    "qo",     # oil production
-    "qg",     # gas production
-    "qw",     # water production
-    "ptubing",  # tubing pressure
-    "pcasing",  # casing pressure
-    "choke",    # choke size
-    "days_on",  # days on production
+    'Well',
+    'Date',
+    'qo',          # oil production
+    'qg',          # gas production
+    'qw',          # water production
+    'ptubing',     # tubing pressure
+    'pcasing',     # casing pressure
+    'choke',       # choke size
+    'days_on',     # days on production
+    'company',     # operator/company name
+    'field',       # field or formation name
+    'county',      # county
+    'state',       # state (2-letter code)
+    'status',      # well status (Active/Drilling/etc)
+    'tvd',         # true vertical depth
+    'tmd',         # total measured depth
+    'afe_num',     # AFE number
+    'afe_cost',    # AFE cost
+    'cc_cost',     # cumulative cost (CC)
+    'present_op',  # present operation description
+    'wi',          # working interest percentage
+    'cap_budget',  # capital budget number
 ]
 
 # Fields that should not be None for a valid record

@@ -16,6 +16,7 @@ from datetime import datetime
 from enum import Enum
 
 from openpyxl import Workbook
+from openpyxl.styles import Font
 from src.config import get_logger, START_ROW, COL_MAP
 from src.core.pdf_processor import process_pdf
 from src.data.validator import validate_records
@@ -479,6 +480,12 @@ class ExtractionService:
                     )
                     wb = Workbook()
                     ws = wb.active or wb.create_sheet("Sheet")
+                    # Write bold headers in row 3 (one row above data START_ROW=4)
+                    header_row = START_ROW - 1
+                    _bold = Font(bold=True)
+                    for _field_name, _col_num in COL_MAP.items():
+                        _hcell = ws.cell(row=header_row, column=_col_num, value=_field_name)
+                        _hcell.font = _bold
                     for i, row_data in enumerate(df.itertuples(index=False)):
                         excel_row = START_ROW + i
                         for field_name, col_number in COL_MAP.items():

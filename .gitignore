@@ -83,6 +83,9 @@ pytest_output.txt
 # Screenshots and temporary assets
 screenshots/
 
+# Test reference files
+Reference-files/
+
 # OS
 *.DS_Store
 Thumbs.db
