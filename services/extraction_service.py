@@ -23,6 +23,8 @@ from src.data.validator import validate_records
 from src.data.deduplicator import deduplicate_and_sort
 from src.output.excel_writer import write_excel
 from src.output.csv_writer import write_csv
+from src.output.flowback_excel_writer import write_flowback_excel
+from src.output.flowback_csv_writer import write_flowback_csv
 
 logger = get_logger(__name__)
 
@@ -464,60 +466,97 @@ class ExtractionService:
             
             logger.info(f"After dedup: {len(df)} records")
             job.unique_wells = df['Well'].nunique() if 'Well' in df.columns else 0
-            
-            # Find template
-            if template_path and Path(template_path).exists():
-                template = Path(template_path)
-            else:
-                # Look for template.xlsx in project root
-                template = Path(__file__).parent.parent / "template.xlsx"
-            
-            # Write Excel output
+
+            # Determine output format from _format tag on records
+            format_tags = list(df['_format'].unique()) if '_format' in df.columns else ['narrative_sor']
+            logger.info(f"Detected format tag(s): {format_tags}")
+
+            if len(format_tags) > 1:
+                raise ProcessingError(
+                    "Mixed PDF formats detected. Please upload SOR and Flowback PDFs in separate batches."
+                )
+
+            detected_format = format_tags[0] if format_tags else 'narrative_sor'
+            is_flowback = detected_format == 'tabular_flowback'
+
             excel_output_path = self.output_folder / f"{job_id}_output.xlsx"
-            try:
-                if template.exists():
-                    write_excel(df, template, excel_output_path)
-                else:
-                    # Template not found — create Excel directly using openpyxl
-                    logger.warning(
-                        f"Template not found at {template}, creating Excel without template"
-                    )
-                    wb = Workbook()
-                    ws = wb.active or wb.create_sheet("Sheet")
-                    # Write bold headers in row 3 (one row above data START_ROW=4)
-                    header_row = START_ROW - 1
-                    _bold = Font(bold=True)
-                    for _field_name, _col_num in COL_MAP.items():
-                        _hcell = ws.cell(row=header_row, column=_col_num, value=_field_name)
-                        _hcell.font = _bold
-                    for i, row_data in enumerate(df.itertuples(index=False)):
-                        excel_row = START_ROW + i
-                        for field_name, col_number in COL_MAP.items():
-                            if hasattr(row_data, field_name):
-                                value = getattr(row_data, field_name)
-                                if field_name == "Date" and value is not None:
-                                    if not isinstance(value, datetime):
-                                        try:
-                                            value = datetime.combine(
-                                                value, datetime.min.time()
-                                            )
-                                        except Exception:
-                                            value = None
-                                ws.cell(row=excel_row, column=col_number, value=value)
-                    wb.save(str(excel_output_path))
-                job.output_excel = excel_output_path
-                logger.info(f"Excel file written: {excel_output_path}")
-            except Exception as e:
-                raise ProcessingError(f"Failed to write Excel file: {str(e)}")
-            
-            # Write CSV output
             csv_output_path = self.output_folder / f"{job_id}_output.csv"
-            try:
-                write_csv(df, csv_output_path)
-                job.output_csv = csv_output_path
-                logger.info(f"CSV file written: {csv_output_path}")
-            except Exception as e:
-                raise ProcessingError(f"Failed to write CSV file: {str(e)}")
+
+            if is_flowback:
+                # Flowback format — use flowback-specific writers
+                logger.info("Using flowback output writers (tabular_flowback format)")
+                # Convert DataFrame back to list of dicts for flowback writers
+                flowback_records: List[Dict[str, Any]] = [
+                    {str(k): v for k, v in row.items()} for row in df.to_dict('records')
+                ]
+                try:
+                    write_flowback_excel(flowback_records, excel_output_path)
+                    job.output_excel = excel_output_path
+                    logger.info(f"Flowback Excel file written: {excel_output_path}")
+                except Exception as e:
+                    raise ProcessingError(f"Failed to write flowback Excel file: {str(e)}")
+
+                try:
+                    write_flowback_csv(flowback_records, csv_output_path)
+                    job.output_csv = csv_output_path
+                    logger.info(f"Flowback CSV file written: {csv_output_path}")
+                except Exception as e:
+                    raise ProcessingError(f"Failed to write flowback CSV file: {str(e)}")
+            else:
+                # SOR / narrative format — existing logic
+                logger.info("Using SOR output writers (narrative_sor format)")
+
+                # Find template
+                if template_path and Path(template_path).exists():
+                    template = Path(template_path)
+                else:
+                    # Look for template.xlsx in project root
+                    template = Path(__file__).parent.parent / "template.xlsx"
+
+                # Write Excel output
+                try:
+                    if template.exists():
+                        write_excel(df, template, excel_output_path)
+                    else:
+                        # Template not found — create Excel directly using openpyxl
+                        logger.warning(
+                            f"Template not found at {template}, creating Excel without template"
+                        )
+                        wb = Workbook()
+                        ws = wb.active or wb.create_sheet("Sheet")
+                        # Write bold headers in row 3 (one row above data START_ROW=4)
+                        header_row = START_ROW - 1
+                        _bold = Font(bold=True)
+                        for _field_name, _col_num in COL_MAP.items():
+                            _hcell = ws.cell(row=header_row, column=_col_num, value=_field_name)
+                            _hcell.font = _bold
+                        for i, row_data in enumerate(df.itertuples(index=False)):
+                            excel_row = START_ROW + i
+                            for field_name, col_number in COL_MAP.items():
+                                if hasattr(row_data, field_name):
+                                    value = getattr(row_data, field_name)
+                                    if field_name == "Date" and value is not None:
+                                        if not isinstance(value, datetime):
+                                            try:
+                                                value = datetime.combine(
+                                                    value, datetime.min.time()
+                                                )
+                                            except Exception:
+                                                value = None
+                                    ws.cell(row=excel_row, column=col_number, value=value)
+                        wb.save(str(excel_output_path))
+                    job.output_excel = excel_output_path
+                    logger.info(f"Excel file written: {excel_output_path}")
+                except Exception as e:
+                    raise ProcessingError(f"Failed to write Excel file: {str(e)}")
+
+                # Write CSV output
+                try:
+                    write_csv(df, csv_output_path)
+                    job.output_csv = csv_output_path
+                    logger.info(f"CSV file written: {csv_output_path}")
+                except Exception as e:
+                    raise ProcessingError(f"Failed to write CSV file: {str(e)}")
             
             job.set_completed()
             self._persist_job(job)

@@ -57,7 +57,10 @@ def deduplicate_and_sort(records: List[Dict[str, Any]]) -> pd.DataFrame:
     if duplicates_removed > 0:
         logger.info(f"Removed {duplicates_removed} duplicate records")
     
-    # Sort by Well (ascending alphabetical) then Date (ascending chronological)
+    # Sort by Well (ascending alphabetical) then Date (ascending chronological).
+    # Compatible with both narrative SOR records and tabular flowback records —
+    # flowback_extraction.py sets 'Well' as an alias for 'Name', so both formats
+    # provide the required 'Well' and 'Date' keys.
     df = df.sort_values(by=['Well', 'Date'], ascending=[True, True])
     
     logger.info(f"Final deduplicated records: {len(df)}")

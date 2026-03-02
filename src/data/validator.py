@@ -10,6 +10,9 @@ from src.config import (
     EXPECTED_FIELDS,
     REQUIRED_FIELDS,
     NUMERIC_FIELDS,
+    FLOWBACK_EXPECTED_FIELDS,
+    FLOWBACK_REQUIRED_FIELDS,
+    FLOWBACK_NUMERIC_FIELDS,
 )
 
 logger = get_logger(__name__)
@@ -46,8 +49,13 @@ def validate_record(record: Dict[str, Any]) -> Tuple[bool, List[str]]:
     """
     errors = []
     
+    # Select field sets based on record format
+    is_flowback = record.get("_format") == "tabular_flowback"
+    active_required_fields = FLOWBACK_REQUIRED_FIELDS if is_flowback else REQUIRED_FIELDS
+    active_numeric_fields = FLOWBACK_NUMERIC_FIELDS if is_flowback else NUMERIC_FIELDS
+    
     # Check required fields
-    for field in REQUIRED_FIELDS:
+    for field in active_required_fields:
         if field not in record:
             errors.append(f"Missing required field: {field}")
         elif record[field] is None:
@@ -58,11 +66,11 @@ def validate_record(record: Dict[str, Any]) -> Tuple[bool, List[str]]:
         if not isinstance(record["Date"], date):
             errors.append(f"Date field is not a date object: {type(record['Date'])}")
     
-    # Check numeric fields are integers or None
-    for field in NUMERIC_FIELDS:
+    # Check numeric fields are numeric (int or float) or None
+    for field in active_numeric_fields:
         if field in record and record[field] is not None:
-            if not isinstance(record[field], int):
-                errors.append(f"Numeric field {field} is not int: {type(record[field])}")
+            if not isinstance(record[field], (int, float)):
+                errors.append(f"Numeric field {field} is not numeric: {type(record[field])}")
     
     # Check for unreasonable values (optional sanity checks)
     if "qo" in record and record["qo"] is not None and record["qo"] < 0:
@@ -140,12 +148,15 @@ def check_record_completeness(record: Dict[str, Any]) -> Dict[str, Any]:
         >>> completeness["completeness_percent"]
         78.5
     """
-    total_fields = len(EXPECTED_FIELDS)
+    active_expected_fields = (
+        FLOWBACK_EXPECTED_FIELDS if record.get("_format") == "tabular_flowback" else EXPECTED_FIELDS
+    )
+    total_fields = len(active_expected_fields)
     populated_fields = sum(
-        1 for field in EXPECTED_FIELDS if field in record and record[field] is not None
+        1 for field in active_expected_fields if field in record and record[field] is not None
     )
     missing_fields = [
-        field for field in EXPECTED_FIELDS if field not in record or record[field] is None
+        field for field in active_expected_fields if field not in record or record[field] is None
     ]
     
     completeness_percent = (populated_fields / total_fields * 100) if total_fields > 0 else 0

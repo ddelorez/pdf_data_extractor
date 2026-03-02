@@ -9,6 +9,8 @@ import pdfplumber
 
 from src.config import get_logger
 from src.core.extraction import extract_well_name, extract_records
+from src.core.format_detector import detect_format, PDFFormat
+from src.core.flowback_extraction import extract_flowback_records
 
 logger = get_logger(__name__)
 
@@ -18,10 +20,9 @@ def process_pdf(pdf_path: Path) -> List[Dict[str, Any]]:
     Process a single PDF file and extract production records.
     
     Orchestrates the PDF processing pipeline:
-    1. Load PDF file using pdfplumber
-    2. Extract text from all pages
-    3. Detect well name
-    4. Extract production records
+    1. Detect PDF format (tabular flowback vs. narrative SOR)
+    2a. For TABULAR_FLOWBACK: delegate to extract_flowback_records()
+    2b. For NARRATIVE_SOR / UNKNOWN: load text and use existing extraction logic
     
     Args:
         pdf_path: Path to the PDF file to process
@@ -47,6 +48,17 @@ def process_pdf(pdf_path: Path) -> List[Dict[str, Any]]:
         logger.error(f"PDF file not found: {pdf_path}")
         raise FileNotFoundError(f"PDF file not found: {pdf_path}")
     
+    # Detect PDF format and route accordingly
+    fmt = detect_format(pdf_path)
+    logger.info(f"  Detected format: {fmt.value}")
+    
+    if fmt == PDFFormat.TABULAR_FLOWBACK:
+        logger.info(f"  Routing to flowback extraction pipeline")
+        records = extract_flowback_records(pdf_path)
+        logger.info(f"  → Flowback extraction yielded {len(records)} records")
+        return records
+    
+    # NARRATIVE_SOR or UNKNOWN — use existing text-based extraction
     text = ""
     
     try:
@@ -64,6 +76,10 @@ def process_pdf(pdf_path: Path) -> List[Dict[str, Any]]:
     # Extract well name and records from combined text
     well_name = extract_well_name(text)
     records = extract_records(text, well_name)
+    
+    # Tag records with format for downstream format-aware processing
+    for record in records:
+        record["_format"] = "narrative_sor"
     
     logger.info(f"  → Found well: {well_name} | {len(records)} records")
     

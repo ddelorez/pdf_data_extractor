@@ -19,6 +19,8 @@ from src.data.validator import validate_records
 from src.data.deduplicator import deduplicate_and_sort
 from src.output.excel_writer import write_excel, get_excel_summary
 from src.output.csv_writer import write_csv_with_formatting
+from src.output.flowback_excel_writer import write_flowback_excel
+from src.output.flowback_csv_writer import write_flowback_csv
 
 logger = get_logger(__name__)
 
@@ -119,41 +121,64 @@ Examples:
     
     # Deduplicate and sort
     df = deduplicate_and_sort(valid_records)
-    
+
+    # Determine output format from _format tag on records
+    format_tags = list(df['_format'].unique()) if '_format' in df.columns else ['narrative_sor']
+    logger.info(f"Detected format tag(s): {format_tags}")
+
+    if len(format_tags) > 1:
+        logger.error(
+            "Mixed PDF formats detected. Please separate SOR and Flowback PDFs into separate runs."
+        )
+        return 1
+
+    detected_format = format_tags[0] if format_tags else 'narrative_sor'
+    is_flowback = detected_format == 'tabular_flowback'
+    logger.info(f"Using {'flowback' if is_flowback else 'SOR'} output writers")
+
     # Write outputs
     try:
-        # Write Excel
-        if template_path.exists():
-            excel_output = write_excel(df, template_path, args.output)
+        if is_flowback:
+            # Flowback format — use flowback-specific writers
+            flowback_records = [
+                {str(k): v for k, v in row.items()} for row in df.to_dict('records')
+            ]
+            excel_output = write_flowback_excel(flowback_records, args.output)
+            csv_output = write_flowback_csv(flowback_records, args.csv)
         else:
-            logger.info("Skipping Excel output (template not found)")
-            excel_output = None
-        
-        # Write CSV
-        csv_output = write_csv_with_formatting(df, args.csv)
-        
+            # SOR / narrative format — existing logic
+            if template_path.exists():
+                excel_output = write_excel(df, template_path, args.output)
+            else:
+                logger.info("Skipping Excel output (template not found)")
+                excel_output = None
+
+            csv_output = write_csv_with_formatting(df, args.csv)
+
         # Report results
         logger.info("\n" + "="*50)
         logger.info("✅ PROCESSING COMPLETE!")
         logger.info("="*50)
         logger.info(f"Records processed: {len(df)}")
-        logger.info(f"Unique wells: {df['Well'].nunique()}")
-        
+        if 'Well' in df.columns:
+            logger.info(f"Unique wells: {df['Well'].nunique()}")
+
         if excel_output:
             logger.info(f"Excel output: {excel_output}")
         logger.info(f"CSV output:   {csv_output}")
-        
-        # Show summary stats
-        summary = get_excel_summary(df)
-        logger.info("\nSummary Statistics:")
-        logger.info(f"  Total Oil Production: {summary['total_oil']:,} BO")
-        logger.info(f"  Total Gas Production: {summary['total_gas']:,} MCF")
-        logger.info(f"  Total Water Production: {summary['total_water']:,} BW")
-        if summary['date_range']:
-            logger.info(f"  Date Range: {summary['date_range']['start']} to {summary['date_range']['end']}")
-        
+
+        if not is_flowback:
+            # Show SOR summary stats
+            summary = get_excel_summary(df)
+            logger.info("\nSummary Statistics:")
+            logger.info(f"  Total Oil Production: {summary['total_oil']:,} BO")
+            logger.info(f"  Total Gas Production: {summary['total_gas']:,} MCF")
+            logger.info(f"  Total Water Production: {summary['total_water']:,} BW")
+            if summary['date_range']:
+                logger.info(f"  Date Range: {summary['date_range']['start']} to {summary['date_range']['end']}")
+
         logger.info("="*50)
-        
+
         return 0
     
     except Exception as e:
