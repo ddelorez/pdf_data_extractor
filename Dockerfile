@@ -10,9 +10,11 @@ ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never
 
-WORKDIR /build
+WORKDIR /app
 
-# Install dependencies into /build/.venv from the lockfile (no dev deps).
+# Install dependencies into /app/.venv from the lockfile (no dev deps).
+# WORKDIR must match the runtime path so uv-generated console scripts
+# (e.g. gunicorn) get the correct absolute shebang to /app/.venv/bin/python.
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
@@ -36,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl gosu && rm
 WORKDIR /app
 
 # Copy the prebuilt virtualenv from the builder stage
-COPY --from=builder --chown=appuser:appuser /build/.venv /app/.venv
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 
 # Copy application code
 COPY --chown=appuser:appuser . .
