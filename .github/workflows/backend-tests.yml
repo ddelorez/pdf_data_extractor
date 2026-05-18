@@ -8,7 +8,8 @@ on:
       - 'tests/backend/**'
       - 'routes/**'
       - 'services/**'
-      - 'requirements.txt'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - 'pytest.ini'
       - '.github/workflows/backend-tests.yml'
   pull_request:
@@ -18,7 +19,8 @@ on:
       - 'tests/backend/**'
       - 'routes/**'
       - 'services/**'
-      - 'requirements.txt'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - 'pytest.ini'
 
 jobs:
@@ -34,31 +36,30 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-      
+          version: "0.5.x"
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install -r requirements.txt
-      
+        run: uv sync --frozen --python ${{ matrix.python-version }}
+
       - name: Run unit tests
-        run: |
-          pytest tests/backend/unit -v --tb=short
+        run: uv run pytest tests/backend/unit -v --tb=short
         continue-on-error: false
-      
+
       - name: Run integration tests
-        run: |
-          pytest tests/backend/integration -v --tb=short
+        run: uv run pytest tests/backend/integration -v --tb=short
         continue-on-error: false
-      
+
       - name: Run all tests with coverage
         run: |
-          pytest tests/backend \
+          uv run pytest tests/backend \
             --cov=src \
             --cov=routes \
             --cov=services \
@@ -66,10 +67,9 @@ jobs:
             --cov-report=html \
             --cov-report=term \
             -v
-      
+
       - name: Check coverage thresholds
-        run: |
-          coverage report --fail-under=60
+        run: uv run coverage report --fail-under=60
         continue-on-error: true
       
       - name: Upload coverage to Codecov

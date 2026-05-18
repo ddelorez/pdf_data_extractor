@@ -1,0 +1,29 @@
+[project]
+name = "pdf-data-extractor"
+version = "0.1.0"
+description = "PDF data extraction tool with Flask API and CLI"
+requires-python = ">=3.10,<3.12"
+dependencies = [
+    "pdfplumber==0.10.3",
+    "openpyxl==3.1.5",
+    "numpy<2",
+    "pandas==2.0.3",
+    "python-dateutil==2.8.2",
+    "Flask==2.3.3",
+    "Werkzeug==2.3.7",
+    "flask-cors==4.0.0",
+    "python-dotenv==1.0.0",
+    "gunicorn==21.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==7.4.3",
+    "pytest-cov==4.1.0",
+    "pytest-flask==1.2.0",
+    "pytest-mock==3.12.0",
+    "coverage==7.3.2",
+]
+
+[tool.uv]
+package = false
