@@ -1,30 +1,31 @@
 # Multi-stage Docker build for PDF Extractor API
 # Production-ready Flask application with gunicorn
 
-# Stage 1: Builder - Install dependencies
-FROM python:3.10-slim AS builder
+# Stage 1: Builder - Install dependencies with uv
+FROM python:3.11-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /uvx /bin/
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never
 
 WORKDIR /build
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+# Install dependencies into /build/.venv from the lockfile (no dev deps).
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 
 # Stage 2: Runtime - Minimal production image
-FROM python:3.10-slim AS production
+FROM python:3.11-slim AS production
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
     FLASK_ENV=production \
-    FLASK_DEBUG=0
+    FLASK_DEBUG=0 \
+    PATH=/app/.venv/bin:$PATH
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser
@@ -34,11 +35,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl gosu && rm
 
 WORKDIR /app
 
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /home/appuser/.local
-
-# Set PATH to include user's local bin
-ENV PATH=/home/appuser/.local/bin:$PATH
+# Copy the prebuilt virtualenv from the builder stage
+COPY --from=builder --chown=appuser:appuser /build/.venv /app/.venv
 
 # Copy application code
 COPY --chown=appuser:appuser . .
