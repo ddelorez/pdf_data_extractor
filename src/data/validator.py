@@ -72,14 +72,16 @@ def validate_record(record: Dict[str, Any]) -> Tuple[bool, List[str]]:
             if not isinstance(record[field], (int, float)):
                 errors.append(f"Numeric field {field} is not numeric: {type(record[field])}")
     
-    # Check for unreasonable values (optional sanity checks)
-    if "qo" in record and record["qo"] is not None and record["qo"] < 0:
+    # Check for unreasonable values (optional sanity checks).
+    # Guard with a numeric type check so a non-numeric value (already flagged
+    # above) doesn't raise TypeError on the < comparison.
+    if isinstance(record.get("qo"), (int, float)) and record["qo"] < 0:
         errors.append("Oil production (qo) cannot be negative")
-    
-    if "qg" in record and record["qg"] is not None and record["qg"] < 0:
+
+    if isinstance(record.get("qg"), (int, float)) and record["qg"] < 0:
         errors.append("Gas production (qg) cannot be negative")
-    
-    if "qw" in record and record["qw"] is not None and record["qw"] < 0:
+
+    if isinstance(record.get("qw"), (int, float)) and record["qw"] < 0:
         errors.append("Water production (qw) cannot be negative")
     
     is_valid = len(errors) == 0

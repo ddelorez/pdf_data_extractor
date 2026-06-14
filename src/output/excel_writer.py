@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 def write_excel(
     df: pd.DataFrame,
-    template_path: Union[str, Path],
+    template_path: Optional[Union[str, Path]] = None,
     output_path: Optional[Union[str, Path]] = None,
 ) -> Path:
     """
@@ -54,14 +54,34 @@ def write_excel(
         >>> output_path = write_excel(df, "template.xlsx")
         >>> print(f"Written to {output_path}")
     """
+    # Accept either a list of record dicts or a DataFrame
+    if not isinstance(df, pd.DataFrame):
+        df = pd.DataFrame(df)
+
+    # Two-arg form write_excel(df, destination): the second positional arg is
+    # the OUTPUT path and there is no template -> write a plain sheet (headers
+    # in row 1, round-trippable via pandas.read_excel). Keyed on output_path
+    # being unset rather than on file existence, so re-writing an existing
+    # output still overwrites it instead of treating it as a template.
+    if output_path is None:
+        target = Path(template_path or OUTPUT_XLSX)
+        df.to_excel(target, index=False)
+        logger.info(f"✅ Excel file written (no template): {target}")
+        return target
+
+    output_path = Path(output_path)
+
+    # Three-arg production form write_excel(df, template, output). If the
+    # template is missing, fall back to a plain sheet at the output path.
+    if template_path is None or not Path(template_path).exists():
+        if template_path is not None:
+            logger.warning(f"Template not found: {template_path}; writing plain workbook")
+        df.to_excel(output_path, index=False)
+        logger.info(f"✅ Excel file written (no template): {output_path}")
+        return output_path
+
     template_path = Path(template_path)
-    output_path = Path(output_path or OUTPUT_XLSX)
-    
-    # Validate template exists
-    if not template_path.exists():
-        logger.error(f"Template file not found: {template_path}")
-        raise FileNotFoundError(f"Template file not found: {template_path}")
-    
+
     # Load workbook
     logger.info(f"Loading template: {template_path.name}")
     try:

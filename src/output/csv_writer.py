@@ -40,12 +40,16 @@ def write_csv(
         >>> print(f"Written to {output_path}")
     """
     output_path = Path(output_path or OUTPUT_CSV)
-    
+
+    # Accept either a list of record dicts (test/CLI callers) or a DataFrame
+    if not isinstance(df, pd.DataFrame):
+        df = pd.DataFrame(df)
+
     logger.info(f"Writing CSV file: {output_path.name}")
-    
+
     try:
         # Write CSV (pandas handles various data types automatically)
-        df.to_csv(output_path, index=index)
+        df.to_csv(output_path, index=index, encoding="utf-8")
         logger.info(f"✅ CSV file written: {output_path}")
     except Exception as e:
         logger.error(f"Failed to write CSV file: {e}")

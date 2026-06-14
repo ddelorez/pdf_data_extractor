@@ -15,16 +15,20 @@ from app import create_app
 @pytest.fixture
 def app():
     """Create and configure Flask app for testing"""
-    app = create_app()
-    app.config['TESTING'] = True
-    
-    # Create temporary directory for test uploads
+    # Create the temp dir first and pass it via config, so the folders are set
+    # before create_app() instantiates ExtractionService (which mkdir's them).
+    # Otherwise it falls back to the container default '/app/uploads' and fails
+    # on a read-only filesystem (CI runner / local).
     temp_dir = tempfile.mkdtemp()
-    app.config['UPLOAD_FOLDER'] = temp_dir
-    app.config['OUTPUT_FOLDER'] = temp_dir
-    
+    app = create_app(config={
+        'TESTING': True,
+        'UPLOAD_FOLDER': temp_dir,
+        'OUTPUT_FOLDER': temp_dir,
+        'TEMPLATE_FOLDER': temp_dir,
+    })
+
     yield app
-    
+
     # Cleanup
     import shutil
     shutil.rmtree(temp_dir, ignore_errors=True)
