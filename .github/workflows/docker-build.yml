@@ -107,7 +107,7 @@ jobs:
           output: 'trivy-backend.sarif'
           severity: 'HIGH,CRITICAL'
           exit-code: '1'  # fail on HIGH/CRITICAL; adjust allowlist in future if needed
-        continue-on-error: true
+          ignore-unfixed: true  # only gate on remediable findings
       
       - name: Run Trivy vulnerability scanner (frontend)
         uses: aquasecurity/trivy-action@master
@@ -117,7 +117,7 @@ jobs:
           output: 'trivy-frontend.sarif'
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
-        continue-on-error: true
+          ignore-unfixed: true  # only gate on remediable findings
       
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3

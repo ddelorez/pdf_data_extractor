@@ -19,9 +19,10 @@ COPY . .
 RUN npm run build
 
 # Runtime stage
-# B2: Using nginx:stable-alpine for better predictability. Pull and pin exact current-stable
-# digest (e.g. nginx:stable-alpine@sha256:...) at implementation time alongside node digest above.
-FROM nginx:stable-alpine
+# B2: nginx:stable-alpine pinned (runtime image carries the attack surface; more important than build base).
+# Digest fetched fresh during this pass (alongside the node digest from CI Unblock generation).
+# Confirm/re-pull at any future implementation time if desired.
+FROM nginx:stable-alpine@sha256:5f979dcfed4ce6461873f087e8c980d6e29b084b9e8776d9704a7e989b5f4898
 
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf

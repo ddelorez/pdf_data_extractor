@@ -18,7 +18,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 
 # Stage 2: Runtime - Minimal production image
-FROM python:3.11-slim AS production
+FROM python:3.11-slim@sha256:ae52c5bef62a6bdd42cd1e8dffef86b9cd284bde9427da79839de7a4b983e7ca AS production
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
