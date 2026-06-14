@@ -13,6 +13,7 @@ from src.config import (
     get_logger,
     WELL_NAME_PATTERNS,
     PRODUCTION_PATTERNS,
+    PRODUCTION_PATTERNS_2,
     DATE_PATTERN,
     DATE_BLOCK_PATTERN,
     DEFAULT_WELL_NAME,
@@ -41,11 +42,13 @@ def extract_well_name(text: str) -> str:
         "HORIZON 10-01-15A"
     """
     for pattern in WELL_NAME_PATTERNS:
-        match = re.search(pattern, text, re.M | re.I)
-        if match:
+        # Iterate all matches (not just the first) so a label-less header line
+        # that matches but fails the digit/length filter doesn't shadow the
+        # real "Well Name:" line later in the text.
+        for match in re.finditer(pattern, text, re.M | re.I):
             # Extract candidate and validate
             candidate = match.group(1).strip().upper()
-            
+
             # Valid well name should contain alphanumeric and be reasonably long
             if re.search(r'\d', candidate) and len(candidate) > 8:
                 logger.debug(f"Well name detected: {candidate}")
@@ -195,7 +198,7 @@ def extract_records(text: str, well_name: str) -> List[Dict[str, Any]]:
         oil = gas = water = None
         
         for pattern in PRODUCTION_PATTERNS:
-            match = re.search(pattern, block, re.I)
+            match = re.search(pattern, block, re.I | re.S)
             if match:
                 try:
                     oil, gas, water = map(int, match.groups())
@@ -203,14 +206,25 @@ def extract_records(text: str, well_name: str) -> List[Dict[str, Any]]:
                 except (ValueError, IndexError) as e:
                     logger.debug(f"Production pattern extracted non-numeric values: {e}")
                     continue
-        
+
+        # Fallback: blocks reporting oil + gas only (no water line)
+        if oil is None and gas is None and water is None:
+            for pattern in PRODUCTION_PATTERNS_2:
+                match = re.search(pattern, block, re.I | re.S)
+                if match:
+                    try:
+                        oil, gas = map(int, match.groups())
+                        break
+                    except (ValueError, IndexError):
+                        continue
+
         # Skip blocks with no production data
         if oil is None and gas is None and water is None:
             continue
         
         # Extract pressures — support both "TP 1192" and "1192# TP" orderings (Bug 1 & 2)
         tubing_match = re.search(
-            r'(?:(?:TP|Tubing\s*(?:Pres(?:sure)?)?)[:\s]*(\d+[\d,]*)|(\d+[\d,]*)#?\s*TP\b)',
+            r'(?:\bTP\b|Tubing)[^\d\n]*?(\d+[\d,]*)|(\d+[\d,]*)#\s?TP\b',
             block, re.I
         )
         if tubing_match:
@@ -224,7 +238,7 @@ def extract_records(text: str, well_name: str) -> List[Dict[str, Any]]:
 
         # CP/FCP regex: support "FCP 340", "CP 340", and "340# CP" orderings (Bug 2)
         casing_match = re.search(
-            r'(?:(?:F?CP|Casing\s*(?:Pres(?:sure)?)?)[:\s]*(\d+[\d,]*)|(\d+[\d,]*)#?\s*F?CP\b)',
+            r'(?:\bF?CP\b|Casing)[^\d\n]*?(\d+[\d,]*)|(\d+[\d,]*)#\s?F?CP\b',
             block, re.I
         )
         if casing_match:
@@ -237,11 +251,11 @@ def extract_records(text: str, well_name: str) -> List[Dict[str, Any]]:
             casing_pressure = None
         
         # Extract days on production
-        days_match = re.search(r'(?:Day|Days?\s*on)[:\s]*(\d+)', block, re.I)
+        days_match = re.search(r'Days?\s*(?:on)?[^\d\n]*?(\d+)', block, re.I)
         days_on = int(days_match.group(1)) if days_match else None
-        
+
         # Extract choke
-        choke_match = re.search(r'(?:on|choke)[:\s]*(\d+)(?:/|\s)', block, re.I)
+        choke_match = re.search(r'Choke[^\d\n]*?(\d+)', block, re.I)
         choke = int(choke_match.group(1)) if choke_match else None
         
         # Build record dictionary

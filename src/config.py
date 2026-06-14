@@ -97,7 +97,7 @@ def get_logger(name: str) -> logging.Logger:
 # ========================= EXTRACTION PATTERNS =========================
 # Regular expression patterns for well name detection
 WELL_NAME_PATTERNS = [
-    r'(?i)(?:well|lease|name)[:\s-]*( [A-Z0-9\s\-]{8,40} )',
+    r'(?i)(?:well\s*name|lease\s*name|well|lease|name)[:\s\-]+([A-Z0-9][A-Z0-9 \-]{6,40})',
     r'\b([A-Z]{3,}\s+\d{1,2}-\d{1,2}-\d{1,2}-\d{1,2}[A-Z0-9XHM]*)\b',
     r'^([A-Z0-9\s\-]{10,40})\s*(?:daily|production|report|day)',
 ]
@@ -107,17 +107,22 @@ WELL_NAME_PATTERNS = [
 # formats like "141 BO, 6023 mcf & 1230 BW" (value & value) or
 # "141 BO, 6023 mcf, 1230 BW" (comma-separated).
 PRODUCTION_PATTERNS = [
-    r'(?:Produced|Oil|BO)[:\s]*(\d+).*?(?:Gas|MCF|mcf)[:\s]*(\d+).*?(?:Water|BW)[:\s]*(\d+)',
     r'Produced\s+(\d+)\s+BO[,&\s]+(\d+)\s+mcfpd?.*?(\d+)\s+BW',
     r'(\d+)\s+BO[,&\s]+(\d+)\s+mcf[,&\s]+(\d+)\s+BW',
     r'(\d+)\s*BO.*?(\d+)\s*(?:mcf|MCF).*?(\d+)\s*BW',
+    r'Oil[^\d\n]*?(-?\d+).*?Gas[^\d\n]*?(-?\d+).*?Water[^\d\n]*?(-?\d+)',
+]
+
+# Fallback for blocks that report oil + gas only (no water line).
+PRODUCTION_PATTERNS_2 = [
+    r'Oil[^\d\n]*?(-?\d+).*?Gas[^\d\n]*?(-?\d+)',
 ]
 
 # Date block splitting pattern
-DATE_BLOCK_PATTERN = r'(?=(?:^|\n)\s*\d{1,2}[/-]\d{1,2}[/-]\d{4})'
+DATE_BLOCK_PATTERN = r'(?=(?:^|\n)\s*(?:Date[:\s]*)?(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}))'
 
 # Date detection pattern
-DATE_PATTERN = r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b'
+DATE_PATTERN = r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})'
 
 # ========================= DEFAULT VALUES =========================
 DEFAULT_WELL_NAME = "UNKNOWN"

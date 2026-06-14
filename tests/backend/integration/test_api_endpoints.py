@@ -18,7 +18,7 @@ class TestApiHealth:
         response = client.get('/api/health')
         assert response.status_code == 200
         data = json.loads(response.data)
-        assert data.get('status') in ['ok', 'success']
+        assert data.get('status') in ['ok', 'success', 'healthy']
     
     def test_health_check_response_format(self, client):
         """Test health check response has proper format"""

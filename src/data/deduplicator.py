@@ -131,12 +131,17 @@ def get_deduplication_stats(original_count: int, final_count: int) -> Dict[str, 
         5.0
     """
     duplicates_found = original_count - final_count
-    percent_removed = (duplicates_found / original_count * 100) if original_count > 0 else 0
-    
+    if original_count > 0:
+        percent_removed = duplicates_found / original_count * 100
+        percent_retained = 100 - percent_removed
+    else:
+        percent_removed = 0.0
+        percent_retained = 0.0
+
     return {
         "original_count": original_count,
         "final_count": final_count,
         "duplicates_found": duplicates_found,
         "percent_removed": percent_removed,
-        "percent_retained": 100 - percent_removed,
+        "percent_retained": percent_retained,
     }
