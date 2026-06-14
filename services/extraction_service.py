@@ -29,7 +29,11 @@ from src.output.flowback_csv_writer import write_flowback_csv
 
 logger = get_logger(__name__)
 
-# Maximum number of files allowed per batch (environment-configurable)
+# Maximum number of files allowed per batch (environment-configurable).
+# This is a count cap only; the real byte ceiling is Flask's MAX_CONTENT_LENGTH
+# (default 100 MB), which caps the whole multipart request — so all files in one
+# request must collectively fit under it. See the size-limits note in app.py
+# (issue #1.8).
 MAX_BATCH_FILES = int(os.environ.get('MAX_BATCH_FILES', '50'))
 
 # Bound the number of jobs processed concurrently in the background. Without a
@@ -47,6 +51,21 @@ _processing_executor = ThreadPoolExecutor(
 # them, and how often the sweeper runs (seconds). Both env-configurable.
 JOB_TTL_HOURS = float(os.environ.get('JOB_TTL_HOURS', '24'))
 JOB_SWEEP_INTERVAL_SECONDS = float(os.environ.get('JOB_SWEEP_INTERVAL_SECONDS', '3600'))
+
+# Bytes read from the head of an upload to confirm it is really a PDF.
+_PDF_SNIFF_BYTES = 1024
+
+
+def _looks_like_pdf(header: bytes) -> bool:
+    """
+    True if ``header`` (the first bytes of a file) is a PDF.
+
+    Validates by magic bytes (%PDF-) rather than trusting the .pdf extension
+    (issue #1.15). The marker is normally at offset 0, but the PDF spec and
+    real-world readers tolerate a small amount of leading bytes, so we scan the
+    first KB.
+    """
+    return b'%PDF-' in header[:_PDF_SNIFF_BYTES]
 
 
 def _process_pdf_with_timeout(pdf_path: Path, timeout: float) -> List[Dict[str, Any]]:
@@ -417,7 +436,19 @@ class ExtractionService:
                 raise FileValidationError(
                     f"Invalid file type: {file.filename}. Only PDF files are supported."
                 )
-            
+
+            # Validate actual content by magic bytes, not just the extension
+            # (issue #1.15). Peek at the header, then rewind so save() is intact.
+            try:
+                header = file.stream.read(_PDF_SNIFF_BYTES)
+                file.stream.seek(0)
+            except Exception as e:
+                raise FileValidationError(f"Could not read file {file.filename}: {str(e)}")
+            if not _looks_like_pdf(header):
+                raise FileValidationError(
+                    f"Invalid PDF content: {file.filename} is not a valid PDF file."
+                )
+
             # Save file with UUID naming
             file_name = f"{uuid.uuid4().hex}.pdf"
             file_path = job.job_folder / file_name

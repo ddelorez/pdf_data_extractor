@@ -4,9 +4,9 @@ Handles file uploads, processing, and downloads.
 """
 
 from flask import Blueprint, request, jsonify, send_file, current_app
-from werkzeug.utils import secure_filename
 from pathlib import Path
 import os
+import uuid
 
 from src.config import get_logger
 from services.extraction_service import (
@@ -29,6 +29,24 @@ def set_service(service: ExtractionService) -> None:
     """Set the extraction service instance."""
     global _service
     _service = service
+
+
+def validate_job_id(job_id: str) -> str:
+    """
+    Validate that job_id is a well-formed UUID and return its canonical form.
+
+    job_id is interpolated into filesystem paths (uploads/<id>/,
+    outputs/<id>_output.*, jobs/<id>.json), so rejecting anything that isn't a
+    real UUID closes a path-traversal vector (e.g. "../../etc/passwd").
+
+    Raises:
+        ValueError: if job_id is not a valid UUID.
+    """
+    try:
+        return str(uuid.UUID(str(job_id)))
+    except (ValueError, AttributeError, TypeError):
+        logger.warning(f"Rejected malformed job_id: {job_id!r}")
+        raise ValueError("Invalid job ID format: must be a UUID")
 
 
 # ====================== ENDPOINTS ======================
@@ -107,10 +125,10 @@ def extract_files():
     
     except Exception as e:
         logger.exception("Unexpected error in extract endpoint")
+        # Don't leak internal exception details to the client (issue C5).
         return jsonify({
             "status": "error",
-            "message": "Internal server error",
-            "details": str(e)
+            "message": "Internal server error"
         }), 500
 
 
@@ -138,16 +156,20 @@ def process_job(job_id: str):
         500: Server error
     """
     try:
+        job_id = validate_job_id(job_id)
         logger.info(f"Processing job {job_id}")
-        
+
         # Get optional template path from request
         template_path = request.json.get('template_path') if request.is_json else None
-        
+
         result = _service.process_job(job_id, template_path)
-        
+
         logger.info(f"Job {job_id} processing completed successfully")
-        
+
         return jsonify(result), 200
+
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
     except JobConflictError as e:
         # Job already processed or in progress (auto-trigger + manual retry race)
@@ -174,10 +196,10 @@ def process_job(job_id: str):
     
     except Exception as e:
         logger.exception(f"Unexpected error processing job {job_id}")
+        # Don't leak internal exception details to the client (issue C5).
         return jsonify({
             "status": "error",
-            "message": "Internal server error",
-            "details": str(e)
+            "message": "Internal server error"
         }), 500
 
 
@@ -210,9 +232,13 @@ def get_status(job_id: str):
         500: Server error
     """
     try:
+        job_id = validate_job_id(job_id)
         status_dict = _service.get_job_status(job_id)
         return jsonify(status_dict), 200
-    
+
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
     except ProcessingError as e:
         if "Job not found" in str(e):
             return jsonify({
@@ -249,8 +275,11 @@ def cancel_job(job_id: str):
         500: Server error
     """
     try:
+        job_id = validate_job_id(job_id)
         result = _service.cancel_job(job_id)
         return jsonify(result), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except ProcessingError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
@@ -274,17 +303,21 @@ def download_excel(job_id: str):
         500: Server error
     """
     try:
+        job_id = validate_job_id(job_id)
         file_path = _service.get_download_path(job_id, 'xlsx')
-        
+
         logger.info(f"Downloading Excel for job {job_id}: {file_path}")
-        
+
         return send_file(
             str(file_path),
             as_attachment=True,
             download_name=f"{job_id}_output.xlsx",
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-    
+
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
     except ProcessingError as e:
         logger.warning(f"Download error for job {job_id}: {e}")
         return jsonify({
@@ -316,8 +349,9 @@ def download_csv(job_id: str):
         500: Server error
     """
     try:
+        job_id = validate_job_id(job_id)
         file_path = _service.get_download_path(job_id, 'csv')
-        
+
         logger.info(f"Downloading CSV for job {job_id}: {file_path}")
         
         return send_file(
@@ -326,7 +360,10 @@ def download_csv(job_id: str):
             download_name=f"{job_id}_output.csv",
             mimetype='text/csv'
         )
-    
+
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
     except ProcessingError as e:
         logger.warning(f"Download error for job {job_id}: {e}")
         return jsonify({
