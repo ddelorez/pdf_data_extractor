@@ -10,14 +10,15 @@ import json
 import tempfile
 import threading
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
-from src.config import get_logger, START_ROW, COL_MAP
+from src.config import get_logger, START_ROW, COL_MAP, DEFAULT_TIMEOUT
 from src.core.pdf_processor import process_pdf
 from src.data.validator import validate_records
 from src.data.deduplicator import deduplicate_and_sort
@@ -30,6 +31,49 @@ logger = get_logger(__name__)
 
 # Maximum number of files allowed per batch (environment-configurable)
 MAX_BATCH_FILES = int(os.environ.get('MAX_BATCH_FILES', '50'))
+
+# Bound the number of jobs processed concurrently in the background. Without a
+# cap, each upload spawned its own thread (100 uploads -> 100 threads fighting
+# over 2 CPU / 2 GB). Jobs beyond the cap queue and run as workers free up.
+MAX_PROCESSING_WORKERS = int(os.environ.get('MAX_PROCESSING_WORKERS', '2'))
+
+# Shared, module-level pool reused across all jobs (the service is per-process).
+_processing_executor = ThreadPoolExecutor(
+    max_workers=MAX_PROCESSING_WORKERS,
+    thread_name_prefix="job-proc",
+)
+
+# How long (hours) a finished job's artifacts live before the sweeper deletes
+# them, and how often the sweeper runs (seconds). Both env-configurable.
+JOB_TTL_HOURS = float(os.environ.get('JOB_TTL_HOURS', '24'))
+JOB_SWEEP_INTERVAL_SECONDS = float(os.environ.get('JOB_SWEEP_INTERVAL_SECONDS', '3600'))
+
+
+def _process_pdf_with_timeout(pdf_path: Path, timeout: float) -> List[Dict[str, Any]]:
+    """
+    Run process_pdf with a wall-clock timeout.
+
+    A malformed PDF can hang pdfplumber forever and pin the processing thread.
+    We run the extraction in a single-use worker and bail after ``timeout``
+    seconds so the job is marked errored and the pool slot is freed.
+
+    Soft-timeout limitation: on timeout the underlying worker thread is
+    abandoned (Python cannot forcibly kill a thread), so a genuinely hung
+    pdfplumber call keeps running in the background until it finishes. The
+    bounded job pool (MAX_PROCESSING_WORKERS) caps how many such threads can
+    accumulate. A hard kill would require a subprocess (see issue #1.2).
+    """
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pdf-extract")
+    future = executor.submit(process_pdf, pdf_path)
+    try:
+        return future.result(timeout=timeout)
+    except FuturesTimeoutError:
+        raise ProcessingError(
+            f"Processing timed out after {timeout:g}s: {pdf_path.name}"
+        )
+    finally:
+        # Don't block on a possibly-hung worker; abandon it (documented above).
+        executor.shutdown(wait=False)
 
 
 class JobStatus(Enum):
@@ -48,6 +92,15 @@ class ProcessingError(Exception):
 
 class FileValidationError(Exception):
     """Custom exception for file validation errors."""
+    pass
+
+
+class JobConflictError(ProcessingError):
+    """Raised when a job is asked to process while not in a PENDING state.
+
+    Subclasses ProcessingError so existing handlers still treat it as a known
+    error, but the route layer maps it to HTTP 409 to prevent double-runs.
+    """
     pass
 
 
@@ -207,6 +260,16 @@ class ExtractionService:
 
         # Job tracking (in-memory cache)
         self.jobs: Dict[str, ProcessingJob] = {}
+
+        # Per-file PDF processing timeout (seconds). Instance attribute so tests
+        # can override it without touching the global default.
+        self.pdf_timeout = DEFAULT_TIMEOUT
+
+        # Background TTL sweeper state (started lazily via start_cleanup_sweeper)
+        self._job_ttl_hours = JOB_TTL_HOURS
+        self._sweep_interval = JOB_SWEEP_INTERVAL_SECONDS
+        self._sweeper_thread: Optional[threading.Thread] = None
+        self._sweeper_stop = threading.Event()
 
         # Restore jobs from disk on startup
         self._reload_jobs()
@@ -375,14 +438,11 @@ class ExtractionService:
             self.jobs[job_id] = job
         self._persist_job(job)
 
-        # Auto-trigger background processing
-        processing_thread = threading.Thread(
-            target=self._background_process,
-            args=(job_id,),
-            daemon=True
-        )
-        processing_thread.start()
-        logger.info(f"Background processing started for job {job_id}")
+        # Auto-trigger background processing via the shared bounded pool.
+        # Jobs beyond MAX_PROCESSING_WORKERS queue instead of spawning a thread
+        # each, so a burst of uploads can't exhaust the CPU/memory budget.
+        _processing_executor.submit(self._background_process, job_id)
+        logger.info(f"Background processing queued for job {job_id}")
 
         logger.info(f"Job {job_id} submitted with {saved_count} files")
         return job_id
@@ -409,7 +469,10 @@ class ExtractionService:
         Raises:
             ProcessingError: If processing fails
         """
-        # Get job — fall back to disk if not in the in-memory cache
+        # Get job — fall back to disk if not in the in-memory cache.
+        # The PENDING -> PROCESSING transition happens atomically under the lock
+        # so the auto-trigger and a manual POST /api/process can't both run the
+        # same job (which would corrupt counters and overwrite output files).
         with self._lock:
             if job_id not in self.jobs:
                 loaded = self._load_job(job_id)
@@ -418,12 +481,19 @@ class ExtractionService:
                 self.jobs[job_id] = loaded
             job = self.jobs[job_id]
 
-        if not job.files_submitted:
-            raise ProcessingError("No files to process")
+            if job.status != JobStatus.PENDING:
+                raise JobConflictError(
+                    f"Job {job_id} is not pending (status: {job.status.value}); "
+                    "it has already been processed or is in progress"
+                )
+
+            if not job.files_submitted:
+                raise ProcessingError("No files to process")
+
+            job.set_processing()
+        self._persist_job(job)
 
         try:
-            job.set_processing()
-            self._persist_job(job)
 
             # Process all PDFs and collect records
             all_records = []
@@ -434,7 +504,7 @@ class ExtractionService:
                     self._persist_job(job)
                     return
                 try:
-                    records = process_pdf(pdf_path)
+                    records = _process_pdf_with_timeout(pdf_path, self.pdf_timeout)
                     all_records.extend(records)
                     logger.info(f"Extracted {len(records)} records from {pdf_path.name}")
                 except Exception as e:
@@ -632,6 +702,115 @@ class ExtractionService:
         self._persist_job(job)
         logger.info(f"Job {job_id} cancellation requested")
         return job.get_status_dict()
+
+    # ------------------------------------------------------------------
+    # Artifact cleanup / garbage collection
+    # ------------------------------------------------------------------
+
+    def cleanup_job(self, job_id: str) -> None:
+        """
+        Delete all on-disk artifacts for a job and drop it from the cache.
+
+        Removes the upload folder (uploads/<job_id>/), the output files
+        (outputs/<job_id>_output.{xlsx,csv}), and the persisted job record
+        (outputs/jobs/<job_id>.json). Idempotent — missing files are ignored.
+        """
+        with self._lock:
+            job = self.jobs.pop(job_id, None)
+        if job is None:
+            job = self._load_job(job_id)
+
+        # Upload folder (handled by ProcessingJob.cleanup)
+        if job is not None:
+            job.cleanup()
+
+        # Output files
+        for output_path in (
+            self.output_folder / f"{job_id}_output.xlsx",
+            self.output_folder / f"{job_id}_output.csv",
+        ):
+            try:
+                output_path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                logger.warning(f"Failed to remove output {output_path}: {e}")
+
+        # Persisted job record
+        job_file = self.jobs_dir / f"{job_id}.json"
+        try:
+            job_file.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            logger.warning(f"Failed to remove job record {job_file}: {e}")
+
+        logger.info(f"Cleaned up artifacts for job {job_id}")
+
+    def sweep_expired_jobs(self, now: Optional[datetime] = None) -> int:
+        """
+        Delete artifacts of finished jobs older than the configured TTL.
+
+        Only terminal jobs (completed/error/cancelled) are eligible; in-flight
+        and pending jobs are never swept. Age is measured from completed_at.
+        Returns the number of jobs cleaned up.
+        """
+        now = now or datetime.utcnow()
+        cutoff = now - timedelta(hours=self._job_ttl_hours)
+        terminal = {JobStatus.COMPLETED, JobStatus.ERROR, JobStatus.CANCELLED}
+
+        expired: List[str] = []
+        for job_file in sorted(self.jobs_dir.glob("*.json")):
+            job_id = job_file.stem
+            job = self._load_job(job_id)
+            if job is None or job.status not in terminal:
+                continue
+            finished_at = job.completed_at or job.created_at
+            if finished_at < cutoff:
+                expired.append(job_id)
+
+        for job_id in expired:
+            try:
+                self.cleanup_job(job_id)
+            except Exception as e:
+                logger.error(f"Failed to sweep job {job_id}: {e}")
+
+        if expired:
+            logger.info(f"Sweeper cleaned up {len(expired)} expired job(s)")
+        return len(expired)
+
+    def start_cleanup_sweeper(self) -> None:
+        """
+        Start the background TTL sweeper thread (idempotent).
+
+        Call once after the service is created (e.g. from the app factory in a
+        non-testing context). With gunicorn --workers 1 there is a single
+        service per process, so a single sweeper is sufficient.
+        """
+        if self._sweeper_thread is not None and self._sweeper_thread.is_alive():
+            return
+        self._sweeper_stop.clear()
+        self._sweeper_thread = threading.Thread(
+            target=self._sweeper_loop, name="job-sweeper", daemon=True
+        )
+        self._sweeper_thread.start()
+        logger.info(
+            f"Job cleanup sweeper started (ttl={self._job_ttl_hours}h, "
+            f"interval={self._sweep_interval}s)"
+        )
+
+    def stop_cleanup_sweeper(self) -> None:
+        """Signal the sweeper thread to stop (used in shutdown/tests)."""
+        self._sweeper_stop.set()
+
+    def _sweeper_loop(self) -> None:
+        """Run sweep_expired_jobs every interval until stopped."""
+        # Event.wait returns True when set (stop requested), False on timeout.
+        while not self._sweeper_stop.wait(self._sweep_interval):
+            try:
+                self.sweep_expired_jobs()
+            except Exception as e:
+                logger.error(f"Cleanup sweeper error: {e}")
 
     def get_download_path(self, job_id: str, format: str) -> Path:
         """

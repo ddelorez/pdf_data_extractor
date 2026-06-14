@@ -105,6 +105,23 @@ class TestApiProcessEndpoint:
             data = json.loads(response.data)
             assert isinstance(data, dict)
 
+    def test_process_endpoint_conflict_returns_409(self, client):
+        """A job that is already processing must not be re-run (issue #1.3)."""
+        from routes import extraction as ext
+        from services.extraction_service import ProcessingJob, JobStatus
+
+        service = ext._service
+        job = ProcessingJob("conflict-job", str(service.upload_folder))
+        pdf = job.job_folder / "input.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        job.files_submitted = [pdf]
+        job.status = JobStatus.PROCESSING
+        service.jobs[job.job_id] = job
+        service._persist_job(job)
+
+        response = client.post(f'/api/process/{job.job_id}')
+        assert response.status_code == 409
+
 
 @pytest.mark.integration
 class TestApiDownloadEndpoints:

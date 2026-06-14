@@ -71,6 +71,11 @@ def create_app(config=None):
     
     # Pass service to routes
     set_service(extraction_service)
+
+    # Start the background TTL sweeper that garbage-collects expired job
+    # artifacts. Skipped under TESTING so the test suite doesn't spawn threads.
+    if not app.config.get('TESTING'):
+        extraction_service.start_cleanup_sweeper()
     
     # ====================== CORS CONFIGURATION ======================
     

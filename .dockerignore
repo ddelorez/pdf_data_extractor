@@ -1,0 +1,33 @@
+# Keep the build context clean and reproducible.
+# Critically, a local .venv must never be copied into the image: its console
+# scripts (gunicorn, etc.) carry host-absolute shebangs that break `exec` at
+# runtime, clobbering the venv built in the builder stage.
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# VCS / tooling
+.git/
+.gitignore
+.github/
+
+# Node / frontend (backend image doesn't need these)
+node_modules/
+**/node_modules/
+
+# Local runtime artifacts and logs
+logs/
+*.log
+uploads/
+outputs/
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
