@@ -1,37 +1,30 @@
-# Phase 2: Quick Start Guide
+# Quick Start Guide
+
+> Dependencies are managed with [`uv`](https://docs.astral.sh/uv/) and `pyproject.toml`/`uv.lock`
+> (not `pip`/`requirements.txt`). Python 3.10–3.11.
 
 ## 🚀 Running Locally (Python)
 
-### 1. Setup Virtual Environment
+### 1. Install Dependencies
 ```bash
-python -m venv venv
-
-# On Windows:
-venv\Scripts\activate
-
-# On macOS/Linux:
-source venv/bin/activate
+# Installs the locked dependency set into a project .venv
+uv sync
 ```
 
-### 2. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Create Configuration
+### 2. Create Configuration
 ```bash
 cp .env.example .env
 # Edit .env if needed (defaults should work for local testing)
 ```
 
-### 4. Create Required Directories
+### 3. Create Required Directories
 ```bash
 mkdir -p uploads outputs logs
 ```
 
-### 5. Start Flask Server
+### 4. Start Flask Server
 ```bash
-python app.py
+uv run python app.py
 ```
 
 **Output:**
@@ -121,7 +114,10 @@ Expected response:
 curl http://localhost:5000/api/status/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
-### Test 4: Process Job
+### Test 4: Process Job (optional)
+Processing starts **automatically** in the background as soon as files are uploaded
+(`POST /api/extract`), so you normally just poll status (Test 3) until `completed`.
+The explicit process endpoint still exists but is not required:
 ```bash
 curl -X POST http://localhost:5000/api/process/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
@@ -129,10 +125,10 @@ curl -X POST http://localhost:5000/api/process/a1b2c3d4-e5f6-7890-abcd-ef1234567
 ### Test 5: Download Results
 ```bash
 # Download Excel
-curl -o result.xlsx http://localhost:5000/download/a1b2c3d4-e5f6-7890-abcd-ef1234567890/output.xlsx
+curl -o result.xlsx http://localhost:5000/api/download/a1b2c3d4-e5f6-7890-abcd-ef1234567890/output.xlsx
 
 # Download CSV
-curl -o result.csv http://localhost:5000/download/a1b2c3d4-e5f6-7890-abcd-ef1234567890/output.csv
+curl -o result.csv http://localhost:5000/api/download/a1b2c3d4-e5f6-7890-abcd-ef1234567890/output.csv
 ```
 
 ---
@@ -140,9 +136,10 @@ curl -o result.csv http://localhost:5000/download/a1b2c3d4-e5f6-7890-abcd-ef1234
 ## 🔍 Directory Structure
 
 ```
-c:/Users/ddelorez/Downloads/PDF Parser Project/
+pdf_data_extractor/
 ├── app.py                    # Main Flask app entry point
-├── requirements.txt          # Python dependencies
+├── pyproject.toml            # Project metadata + dependencies (managed by uv)
+├── uv.lock                   # Locked dependency versions
 ├── .env.example             # Environment configuration template
 ├── .env                     # Your local configuration (create from example)
 ├── Dockerfile              # Docker image definition
@@ -188,26 +185,21 @@ c:/Users/ddelorez/Downloads/PDF Parser Project/
 | POST | `/api/extract` | Upload PDF files |
 | POST | `/api/process/<job_id>` | Process uploaded PDFs |
 | GET | `/api/status/<job_id>` | Check job status |
-| GET | `/download/<job_id>/output.xlsx` | Download Excel |
-| GET | `/download/<job_id>/output.csv` | Download CSV |
+| GET | `/api/download/<job_id>/output.xlsx` | Download Excel |
+| GET | `/api/download/<job_id>/output.csv` | Download CSV |
 
 ---
 
 ## 📋 Typical Workflow
 
 ```
-1. POST /api/extract                  → Get job_id
-   Upload PDF files
+1. POST /api/extract                   → Get job_id
+   Upload PDF files (processing starts automatically in the background)
    ↓
-2. GET /api/status/<job_id>           → Check if ready
-   Wait for "pending" status
+2. GET /api/status/<job_id>            → Monitor progress
+   Polling loop until "completed", "error", or "cancelled"
    ↓
-3. POST /api/process/<job_id>         → Start processing
-   
-4. GET /api/status/<job_id>           → Monitor progress
-   Polling loop until "completed" or "error"
-   ↓
-5. GET /download/<job_id>/output.*    → Download results
+3. GET /api/download/<job_id>/output.* → Download results
    Get Excel and/or CSV files
 ```
 
@@ -229,14 +221,11 @@ lsof -i :5000
 
 ### Flask Won't Start
 ```bash
-# Check if dependencies installed
-pip list | grep -i flask
+# Re-sync dependencies from the lockfile
+uv sync
 
-# Reinstall requirements
-pip install -r requirements.txt
-
-# Check Python version
-python --version  # Should be 3.10+
+# Check Python version (3.10–3.11)
+uv run python --version
 ```
 
 ### Docker Build Fails
@@ -253,8 +242,8 @@ docker-compose build pdf-extractor
 
 ### Files Not Processing
 ```bash
-# Check if template.xlsx exists in project root
-# "PDF template" is required for Excel output
+# Excel output works without a template (plain sheet); a template.xlsx in the
+# project root is optional and only used for formatted/branded output
 
 # Check logs
 tail -f logs/pdf_parser.log
@@ -294,11 +283,10 @@ FLASK_PORT=5000
 
 ## ✅ Verification Checklist
 
-- [ ] Virtual environment created and activated
-- [ ] Dependencies installed (`pip install -r requirements.txt`)
+- [ ] Dependencies installed (`uv sync`)
 - [ ] `.env` file created from `.env.example`
 - [ ] `uploads/`, `outputs/`, `logs/` directories exist
-- [ ] Flask starts without errors (`python app.py`)
+- [ ] Flask starts without errors (`uv run python app.py`)
 - [ ] Health endpoint responds (`curl http://localhost:5000/api/health`)
 - [ ] File upload works (`curl -F "files=@test.pdf" http://localhost:5000/api/extract`)
 - [ ] Docker image builds (`docker-compose build`)
@@ -309,9 +297,9 @@ FLASK_PORT=5000
 
 ## 📚 Next Steps
 
-- Read [`PHASE_2_IMPLEMENTATION.md`](PHASE_2_IMPLEMENTATION.md) for complete API documentation
-- See [`PHASE_1_VERIFICATION.md`](PHASE_1_VERIFICATION.md) for extraction engine details
-- Prepare for Phase 3 (React frontend)
+- See [`README.md`](README.md) for the full project overview and current setup
+- The React frontend lives in `frontend/` — see [`frontend/README.md`](frontend/README.md)
+- `PHASE_*_IMPLEMENTATION.md` are historical, point-in-time phase records
 
 ---
 
@@ -321,7 +309,7 @@ FLASK_PORT=5000
 2. **Watch logs in real-time**: `docker-compose logs -f`
 3. **Keep job_id format** - it's a UUID (36 characters)
 4. **Check file sizes** - max 100 MB default per file
-5. **Template required** - Excel output needs `template.xlsx` in project root
+5. **Template optional** - Excel works without one (plain sheet); add `template.xlsx` for formatted output
 
 ---
 
@@ -329,11 +317,13 @@ FLASK_PORT=5000
 
 | Error | Solution |
 |-------|----------|
-| "Template file not found" | Ensure `template.xlsx` exists in project root |
 | "File too large" | Increase `MAX_UPLOAD_SIZE` in `.env` |
 | "Job not found" | Job_id doesn't exist or expired; use correct ID |
 | "Port 5000 in use" | Change `FLASK_PORT` in `.env` or stop other app |
-| "Module not found" | Run `pip install -r requirements.txt` |
+| "Module not found" | Run `uv sync` |
+
+> Note: an Excel `template.xlsx` is **optional** — without one, a plain spreadsheet
+> (header row + data) is written. Provide a template only for formatted/branded output.
 
 ---
 

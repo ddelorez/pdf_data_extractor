@@ -1,5 +1,10 @@
 # Phase 2: Flask Backend and Docker Foundation - Implementation Guide
 
+> **📄 Historical record** — captures the state at this phase; not kept current. For current
+> setup, commands, and API paths see [`README.md`](README.md) and [`QUICK_START.md`](QUICK_START.md).
+> (The project now uses `uv` instead of `pip`/`requirements.txt`; downloads are at `/api/download/...`;
+> Node 22; Python 3.10–3.11.)
+
 ## Overview
 
 Phase 2 implements a production-ready Flask REST API that wraps the Phase 1 PDF extraction engine and enables Docker containerized deployment. The system is designed for scalability, error handling, and easy integration with a React frontend in Phase 3.

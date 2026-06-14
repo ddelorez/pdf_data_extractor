@@ -1,8 +1,14 @@
 # PDF Extractor - Ubuntu/Proxmox VE Deployment Guide
 
-**Version**: 2.0.0  
-**Last Updated**: February 2026  
-**Status**: Production Ready
+**Version**: 2.0  
+**Last Updated**: June 2026 (post dependency/CI/Docker hardening)  
+**Status**: Deployed internally
+
+> Docker images now use digest-pinned bases (`node:22-alpine`, `nginx:stable-alpine`,
+> `python:3.11-slim`, `uv`), a `/health` container healthcheck, and the backend runs
+> `gunicorn --workers 1` (the single-worker constraint is load-bearing — the in-memory
+> job service is per-process; do not increase without migrating to a shared store).
+> The deployment flow below (docker compose) is unchanged.
 
 ---
 
@@ -1208,6 +1214,6 @@ For issues or bugs:
 
 ---
 
-**Document Version**: 2.0.0  
-**Last Updated**: February 2026  
-**Status**: Production Ready
+**Document Version**: 2.0  
+**Last Updated**: June 2026  
+**Status**: Deployed internally

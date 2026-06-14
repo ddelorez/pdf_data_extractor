@@ -1,5 +1,10 @@
 # Phase 3 Implementation: React Frontend & Integration with Flask Backend
 
+> **📄 Historical record** — captures the state at this phase; not kept current. For current
+> setup, commands, and API paths see [`README.md`](README.md) and [`QUICK_START.md`](QUICK_START.md).
+> (The project now uses `uv` instead of `pip`/`requirements.txt`; downloads are at `/api/download/...`;
+> Node 22; Python 3.10–3.11.)
+
 **Status**: ✅ Complete  
 **Date**: 2026-02-25  
 **Version**: 2.0.0

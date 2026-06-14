@@ -173,10 +173,10 @@ def create_app(config=None):
                         "progress": "0-100"
                     }
                 },
-                "GET /download/<job_id>/output.xlsx": {
+                "GET /api/download/<job_id>/output.xlsx": {
                     "description": "Download Excel output file"
                 },
-                "GET /download/<job_id>/output.csv": {
+                "GET /api/download/<job_id>/output.csv": {
                     "description": "Download CSV output file"
                 },
                 "GET /api/health": {

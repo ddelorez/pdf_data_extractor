@@ -1,5 +1,10 @@
 # Phase 4: Comprehensive Testing Suite and CI/CD Pipeline
 
+> **📄 Historical record** — captures the state at this phase; not kept current. For current
+> setup, commands, and API paths see [`README.md`](README.md) and [`QUICK_START.md`](QUICK_START.md).
+> Note: CI was later migrated to `uv`/`npm ci`/Node 22 with bumped action versions, and the
+> backend test suite was repaired (52 failures → green). See `RECOMMENDATIONS.md` and issue #7.
+
 ## Implementation Complete ✅
 
 ### Executive Summary
