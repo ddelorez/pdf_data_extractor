@@ -44,6 +44,10 @@ tests/
 
 ### Running Backend Tests
 
+> Dependencies are managed with `uv`. Prefix the commands below with `uv run`
+> (e.g. `uv run pytest tests/backend`), or activate the venv first with
+> `uv sync && source .venv/bin/activate`.
+
 ```bash
 # All tests
 pytest tests/backend
@@ -227,7 +231,7 @@ Frontend Coverage Requirements:
 
 #### Frontend Tests Workflow (`frontend-tests.yml`)
 - Triggers: Push, Pull Request (main, develop, feature/*)
-- Matrix: Node 18.x, 20.x
+- Matrix: Node 20.x, 22.x
 - Tasks:
   - Install dependencies
   - Run linting
@@ -257,11 +261,11 @@ Workflows are triggered automatically on:
 ### Setup
 
 ```bash
-# Install Python dependencies
-pip install -r requirements.txt
+# Install Python dependencies (uv, from pyproject.toml / uv.lock)
+uv sync
 
-# Install frontend dependencies
-cd frontend && npm install && cd ..
+# Install frontend dependencies (reproducible, from package-lock.json)
+cd frontend && npm ci && cd ..
 ```
 
 ### Backend Tests

@@ -1,9 +1,11 @@
-# PDF Parser Project - Phase 3 Complete
+# PDF Data Extractor
 
-Oil & Gas PDF Data Extractor with Hybrid (Flask + React) Deployment Architecture
+Oil & Gas PDF Data Extractor with a hybrid (Flask + React) deployment architecture.
 
-**Current Phase**: Phase 3 - React Frontend & Integration Complete  
-**Status**: ✅ Phase 1-3 Complete | Ready for Production Deployment
+**Status**: Phases 1–4 complete; deployed internally. Dependency/CI/Docker hardening and backend
+test repair are done (see [`RECOMMENDATIONS.md`](RECOMMENDATIONS.md)); remaining backend hardening
+is tracked in issues #1 and #7.
+**Tooling**: Python 3.10–3.11 · [`uv`](https://docs.astral.sh/uv/) for dependencies · Node 22 (frontend) · Docker.
 
 ---
 
@@ -37,7 +39,8 @@ pdf-parser-project/
 │       ├── excel_writer.py       # Excel template filling
 │       └── csv_writer.py         # CSV export
 ├── cli.py                        # Command-line interface
-├── requirements.txt              # Python dependencies
+├── pyproject.toml                # Project metadata + dependencies (managed by uv)
+├── uv.lock                       # Locked dependency versions
 ├── input_pdfs/                   # Input PDF directory
 ├── logs/                         # Application logs (created at runtime)
 └── README.md                     # This file
@@ -49,18 +52,11 @@ pdf-parser-project/
 
 ### 1. Installation
 
+Dependencies are managed with [`uv`](https://docs.astral.sh/uv/) (`pyproject.toml` / `uv.lock`):
+
 ```bash
-# Create virtual environment (recommended)
-python -m venv venv
-
-# Activate virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Installs the locked dependency set into a project .venv
+uv sync
 ```
 
 ### 2. Prepare Input
@@ -82,18 +78,18 @@ Place `template.xlsx` in the project root. The template should have:
 
 ```bash
 # Using default paths
-python cli.py
+uv run python cli.py
 
 # Custom paths
-python cli.py --input ./my_pdfs --output results.xlsx --csv results.csv
+uv run python cli.py --input ./my_pdfs --output results.xlsx --csv results.csv
 
 # Show help
-python cli.py --help
+uv run python cli.py --help
 ```
 
 ### Output
 
-- `output.xlsx` - Extracted data in Excel (requires template)
+- `output.xlsx` - Extracted data in Excel (uses `template.xlsx` if present; otherwise a plain sheet)
 - `output.csv` - Extracted data in CSV format
 - `logs/pdf_parser.log` - Processing details and errors
 
@@ -154,7 +150,7 @@ Deduplication and sorting:
 Excel template filling:
 
 **Functions:**
-- `write_excel(df, template, output_path)` - Fills template with data
+- `write_excel(df, template_path=None, output_path=None)` - Writes Excel; fills `template_path` if given, else a plain sheet
 - `get_excel_summary(df)` - Calculates production statistics
 
 ### `src/output/csv_writer.py`
@@ -300,10 +296,10 @@ A: Verify `template.xlsx` exists and `COL_MAP` matches your template columns
 
 ## Version
 
-- **Project Version**: 2.0.0
-- **Phase**: 3 (React Frontend Complete)
-- **Release Date**: 2026-02-25
-- **Status**: Production Ready
+- **Project Version**: 2.0
+- **Phases**: 1–4 complete (core engine, Flask backend, React frontend, advanced features)
+- **Last updated**: 2026-06-14 (dependency/CI/Docker hardening + backend test repair)
+- **Status**: Deployed internally; remaining backend hardening tracked in issues #1 / #7
 
 ---
 
@@ -358,8 +354,8 @@ Phase 4: Advanced Features (→ Future)
 │  ├─ /api/extract - File upload                      │
 │  ├─ /api/process/{job_id} - Process files           │
 │  ├─ /api/status/{job_id} - Job status               │
-│  ├─ /download/{job_id}/output.xlsx - Download      │
-│  └─ /download/{job_id}/output.csv - Download       │
+│  ├─ /api/download/{job_id}/output.xlsx - Download   │
+│  └─ /api/download/{job_id}/output.csv - Download    │
 │                                                       │
 │  Processing Pipeline                                │
 │  ├─ Phase 1 Core: PDF extraction                    │

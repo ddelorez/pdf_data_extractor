@@ -397,9 +397,9 @@ it('updates state', () => {
 ### Module not found
 
 ```bash
-# Clear cache and reinstall
+# Clear cache and reinstall (reproducible install from package-lock.json)
 rm -rf node_modules dist
-npm install
+npm ci
 npm test
 ```
 
