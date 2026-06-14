@@ -50,7 +50,7 @@ jobs:
         run: cd frontend && npm run coverage -- --reporter=json --reporter=html
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           files: ./frontend/coverage/coverage-final.json
           flags: frontend
@@ -59,7 +59,7 @@ jobs:
       
       - name: Archive coverage reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage-node${{ matrix.node-version }}
           path: frontend/coverage/
@@ -67,7 +67,7 @@ jobs:
       
       - name: Archive test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results-node${{ matrix.node-version }}
           path: frontend/.vitest/

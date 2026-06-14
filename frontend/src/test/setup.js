@@ -1,4 +1,4 @@
-import { expect, beforeAll, afterEach, vi } from 'vitest'
+import { beforeAll, afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
@@ -9,7 +9,7 @@ afterEach(() => {
 
 // Mock environment variables
 process.env.VITE_API_BASE_URL = 'http://localhost:5000/api'
-process.env.VITE_DOWNLOAD_BASE_URL = 'http://localhost:5000/download'
+process.env.VITE_DOWNLOAD_BASE_URL = 'http://localhost:5000/api/download'
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {

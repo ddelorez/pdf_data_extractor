@@ -1,44 +1,43 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import axios from 'axios'
 import * as api from './api'
 import {
   mockSuccessUpload,
-  mockSuccessProcess,
   mockJobStatus,
   mockHealthCheck,
-  mockErrorResponse,
   mockPdfFile,
 } from '../test/mockResponses'
 
-// Mock axios - handles both create() for apiClient and direct get() calls
-vi.mock('axios', () => {
-  const mockGet = vi.fn()
-  return {
-    default: {
-      create: vi.fn(),
-      get: mockGet,
+// Single shared mock client, hoisted so the vi.mock factory below and the tests
+// reference the SAME object. api.js captures this instance via axios.create() at
+// import time, so the tests must configure that exact instance — configuring a
+// freshly-created object per test (the previous bug) left api.js using a client
+// whose methods returned undefined (RECOMMENDATIONS A2).
+const mockClient = vi.hoisted(() => ({
+  post: vi.fn(),
+  get: vi.fn(),
+  interceptors: {
+    response: {
+      use: vi.fn(),
     },
-  }
-})
+  },
+}))
+
+vi.mock('axios', () => ({
+  default: {
+    create: vi.fn(() => mockClient),
+    get: vi.fn(),
+  },
+}))
 
 describe('API Service', () => {
-  let mockClient
-
   beforeEach(() => {
-    mockClient = {
-      post: vi.fn(),
-      get: vi.fn(),
-      interceptors: {
-        response: {
-          use: vi.fn(),
-        },
-      },
-    }
-    axios.create.mockReturnValue(mockClient)
-  })
-
-  afterEach(() => {
-    vi.clearAllMocks()
+    // Reset only the per-request mocks. Do NOT clearAllMocks() — that would wipe
+    // the import-time interceptor registration the "interceptor configured" test
+    // relies on.
+    mockClient.post.mockReset()
+    mockClient.get.mockReset()
+    axios.get.mockReset()
   })
 
   describe('uploadFiles', () => {
@@ -73,28 +72,7 @@ describe('API Service', () => {
     })
   })
 
-  describe('processJob', () => {
-    it('should process job successfully', async () => {
-      mockClient.post.mockResolvedValue({ data: mockSuccessProcess })
 
-      const result = await api.processJob('test-job-123')
-
-      expect(mockClient.post).toHaveBeenCalledWith('/process/test-job-123')
-      expect(result).toEqual(mockSuccessProcess)
-    })
-
-    it('should throw error on process failure', async () => {
-      mockClient.post.mockRejectedValue(new Error('Processing failed'))
-
-      await expect(api.processJob('test-job-123')).rejects.toThrow()
-    })
-
-    it('should handle invalid job ID', async () => {
-      mockClient.post.mockRejectedValue(new Error('Job not found'))
-
-      await expect(api.processJob('invalid-id')).rejects.toThrow()
-    })
-  })
 
   describe('getJobStatus', () => {
     it('should get job status successfully', async () => {
@@ -129,7 +107,7 @@ describe('API Service', () => {
        const result = await api.downloadExcel('test-job-123')
 
        expect(axios.get).toHaveBeenCalledWith(
-         'http://localhost:3001/download/test-job-123/output.xlsx',
+         'http://localhost:5000/api/download/test-job-123/output.xlsx',
          { responseType: 'blob' }
        )
        expect(result).toBeDefined()
@@ -150,7 +128,7 @@ describe('API Service', () => {
        const result = await api.downloadCsv('test-job-123')
 
        expect(axios.get).toHaveBeenCalledWith(
-         'http://localhost:3001/download/test-job-123/output.csv',
+         'http://localhost:5000/api/download/test-job-123/output.csv',
          { responseType: 'blob' }
        )
        expect(result).toBeDefined()

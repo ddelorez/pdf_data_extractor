@@ -26,8 +26,8 @@ export const usePolling = (jobId, pollingInterval = 2000) => {
       setStatus(data);
       setProgress(data.progress || 0);
 
-      // Stop polling if job is complete or failed
-      if (data.status === 'completed' || data.status === 'failed' || data.status === 'error') {
+      // Stop polling if job is complete or failed (or cancelled) (RECOMMENDATIONS E1)
+      if (data.status === 'completed' || data.status === 'failed' || data.status === 'error' || data.status === 'cancelled') {
         stopPolling();
       } else {
         // Schedule next poll
@@ -41,11 +41,11 @@ export const usePolling = (jobId, pollingInterval = 2000) => {
   }, [jobId, pollingInterval, stopPolling]);
 
   const startPolling = useCallback(() => {
-    if (!jobId) return;
+    if (!jobId || isPolling) return;  // guard against double-start (RECOMMENDATIONS E5)
     setIsPolling(true);
     // Initial poll immediately
     pollStatus();
-  }, [jobId, pollStatus]);
+  }, [jobId, pollStatus, isPolling]);
 
   useEffect(() => {
     return () => {
