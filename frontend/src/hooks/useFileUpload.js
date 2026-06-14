@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { uploadFiles as uploadFilesAPI } from '../services/api';
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB per file
+const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100 MB aggregate (matches backend MAX_CONTENT_LENGTH)
 const ALLOWED_TYPES = ['application/pdf'];
 
 export const useFileUpload = () => {
@@ -12,26 +13,37 @@ export const useFileUpload = () => {
 
   const validateFiles = useCallback((filesToValidate) => {
     const errors = [];
-    
+    // Start from the already-pending selection so the aggregate check accounts
+    // for everything that will be uploaded together (RECOMMENDATIONS E4).
+    let runningTotal = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+
     filesToValidate.forEach((file) => {
       // Check file type
       if (!ALLOWED_TYPES.includes(file.type)) {
         errors.push(`${file.name}: Not a PDF file`);
       }
-      
+
       // Check file size
       if (file.size > MAX_FILE_SIZE) {
         errors.push(`${file.name}: File size exceeds 50 MB limit`);
       }
-      
-      // Check for duplicates
-      if (files.some(f => f.name === file.name && f.size === file.size)) {
+
+      // Check for duplicates against the pending selection, not post-upload
+      // files (which is empty until an upload completes) (RECOMMENDATIONS E2).
+      if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
         errors.push(`${file.name}: Already selected`);
       }
+
+      runningTotal += file.size;
     });
 
+    // Aggregate size check across the whole pending batch (RECOMMENDATIONS E4).
+    if (runningTotal > MAX_TOTAL_SIZE) {
+      errors.push('Total upload size exceeds 100 MB limit');
+    }
+
     return errors;
-  }, [files]);
+  }, [selectedFiles]);
 
   const addFiles = useCallback((filesToAdd) => {
     const errors = validateFiles(filesToAdd);

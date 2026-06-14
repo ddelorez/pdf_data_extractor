@@ -13,8 +13,8 @@ export const mockSuccessProcess = {
   status: 'success',
   records: 45,
   wells: ['HORIZON 10-01-15A', 'WILDCAT 05-12-18B'],
-  excel_url: '/download/test-job-123/output.xlsx',
-  csv_url: '/download/test-job-123/output.csv',
+  excel_url: '/api/download/test-job-123/output.xlsx',
+  csv_url: '/api/download/test-job-123/output.csv',
   message: 'Processing completed successfully',
 }
 

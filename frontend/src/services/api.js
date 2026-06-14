@@ -16,6 +16,10 @@ apiClient.interceptors.response.use(
   error => {
     if (error.response) {
       // Server responded with error status
+      if (error.response.status === 413) {
+        // Payload too large: surface a clear message instead of the raw 413 (RECOMMENDATIONS E4)
+        throw new Error('Upload too large: total file size exceeds the server limit (100 MB).');
+      }
       const message = error.response.data?.error || error.response.statusText || 'Server error occurred';
       throw new Error(message);
     } else if (error.request) {
@@ -49,20 +53,6 @@ export const uploadFiles = async (files) => {
     return response.data;
   } catch (error) {
     throw new Error(`Upload failed: ${error.message}`);
-  }
-};
-
-/**
- * Process a job
- * @param {string} jobId - Job ID to process
- * @returns {Promise<{status, records, wells, excel_url, csv_url}>}
- */
-export const processJob = async (jobId) => {
-  try {
-    const response = await apiClient.post(`/process/${jobId}`);
-    return response.data;
-  } catch (error) {
-    throw new Error(`Processing failed: ${error.message}`);
   }
 };
 

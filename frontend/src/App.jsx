@@ -112,6 +112,8 @@ const App = () => {
         retryable: true
       });
       setAppState('error');
+    } else if (polling.status?.status === 'cancelled') {  // RECOMMENDATIONS E1
+      setAppState('idle');
     }
   }, [polling.status]);
 

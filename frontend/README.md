@@ -357,6 +357,10 @@ Follow these guidelines:
 - Document complex functions
 - Follow CSS naming conventions
 
+## E7: npm audit findings (dev-only)
+
+dev/build-time only; not present in the production static bundle; no non-breaking fix available for the remaining dev-only advisories (vite/vitest/etc.). npm audit will report the dev advisories — this is correct and honest (conscious accept per Flag 1). eslint 8→9 kept as EOL (acceptable legacy bridge with ESLINT_USE_FLAT_CONFIG=false).
+
 ## License
 
 Part of the PDF Production Data Extractor project.
