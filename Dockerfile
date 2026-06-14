@@ -59,6 +59,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Production WSGI server with gunicorn
 ENTRYPOINT ["/app/entrypoint.sh"]
+# DO NOT increase --workers above 1: the ExtractionService job store (_service)
+# is per-process and is shared only via file-based persistence. Multiple workers
+# each get their own in-memory cache, which reintroduces the job-status 404 bug
+# (a job created in worker A is invisible to worker B). Scaling out requires a
+# shared store (Redis/RQ or sqlite locking) first. Use --threads to add concurrency.
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:5000", \
      "--workers", "1", \

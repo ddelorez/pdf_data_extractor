@@ -9,7 +9,12 @@ from pathlib import Path
 import os
 
 from src.config import get_logger
-from services.extraction_service import ExtractionService, ProcessingError, FileValidationError
+from services.extraction_service import (
+    ExtractionService,
+    ProcessingError,
+    FileValidationError,
+    JobConflictError,
+)
 
 logger = get_logger(__name__)
 
@@ -143,10 +148,18 @@ def process_job(job_id: str):
         logger.info(f"Job {job_id} processing completed successfully")
         
         return jsonify(result), 200
-    
+
+    except JobConflictError as e:
+        # Job already processed or in progress (auto-trigger + manual retry race)
+        logger.info(f"Processing conflict for job {job_id}: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 409  # 409 Conflict
+
     except ProcessingError as e:
         logger.warning(f"Processing error for job {job_id}: {e}")
-        
+
         # Check if job not found
         if "Job not found" in str(e):
             return jsonify({
