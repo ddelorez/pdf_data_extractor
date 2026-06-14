@@ -70,7 +70,7 @@ jobs:
       
       - name: Check frontend accessibility
         run: |
-          curl -f http://localhost:3000 || exit 1
+          curl -f http://localhost:80 || exit 1
         continue-on-error: true
       
       - name: View service logs
@@ -96,16 +96,37 @@ jobs:
       - name: Build backend image for scanning
         run: docker build -t pdf-extractor-backend:scan -f Dockerfile .
       
-      - name: Run Trivy vulnerability scanner
+      - name: Build frontend image for scanning
+        run: docker build -t pdf-extractor-frontend:scan -f frontend/Dockerfile frontend/
+      
+      - name: Run Trivy vulnerability scanner (backend)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'pdf-extractor-backend:scan'
           format: 'sarif'
-          output: 'trivy-results.sarif'
-        continue-on-error: true
+          output: 'trivy-backend.sarif'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'  # fail on HIGH/CRITICAL; adjust allowlist in future if needed
+          ignore-unfixed: true  # only gate on remediable findings
+      
+      - name: Run Trivy vulnerability scanner (frontend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'pdf-extractor-frontend:scan'
+          format: 'sarif'
+          output: 'trivy-frontend.sarif'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          ignore-unfixed: true  # only gate on remediable findings
       
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: 'trivy-backend.sarif'
+        continue-on-error: true
+      
+      - name: Upload Trivy results (frontend) to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-frontend.sarif'
         continue-on-error: true
