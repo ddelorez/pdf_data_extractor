@@ -2,9 +2,9 @@
 # Production-ready Flask application with gunicorn
 
 # Stage 1: Builder - Install dependencies with uv
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim@sha256:ae52c5bef62a6bdd42cd1e8dffef86b9cd284bde9427da79839de7a4b983e7ca AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv@sha256:7bff3c3776ec467fc1437960f2c469d8beb30f536a6465a3350c647ccd260ec2 /uv /uvx /bin/
 
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
@@ -30,8 +30,8 @@ ENV PYTHONUNBUFFERED=1 \
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser
 
-# Install curl for healthcheck
-RUN apt-get update && apt-get install -y --no-install-recommends curl gosu && rm -rf /var/lib/apt/lists/*
+# Install curl for healthcheck (B5: upgrade base packages for security patches on each build)
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends curl gosu && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
