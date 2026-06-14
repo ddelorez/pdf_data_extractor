@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ["18.x", "20.x"]
+        node-version: ["20.x", "22.x"]
     
     steps:
       - name: Checkout code
@@ -37,7 +37,7 @@ jobs:
           cache-dependency-path: 'frontend/package-lock.json'
       
       - name: Install dependencies
-        run: cd frontend && npm install
+        run: cd frontend && npm ci
       
       - name: Run linting
         run: cd frontend && npm run lint --if-present
@@ -85,12 +85,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
       
       - name: Install dependencies
-        run: cd frontend && npm install
+        run: cd frontend && npm ci
       
       - name: Check code style
         run: cd frontend && npm run lint --if-present
