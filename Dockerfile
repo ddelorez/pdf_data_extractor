@@ -54,7 +54,9 @@ RUN chmod +x /app/entrypoint.sh
 EXPOSE 5000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+# start-period covers Flask + pandas cold start so early probes during boot
+# don't count as failures / trigger a restart loop (issue #1.17).
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:5000/api/health || exit 1
 
 # Production WSGI server with gunicorn
