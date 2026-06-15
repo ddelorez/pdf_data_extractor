@@ -6,9 +6,12 @@ services:
     
     container_name: pdf-extractor-api
     
-    # Expose ports (only internally to frontend)
+    # The backend is internal — the frontend reaches it over the compose network
+    # (http://backend:5000). Bind the published port to loopback only so it's
+    # available for local debugging on the host but NOT exposed on the LAN
+    # (issue #1.11).
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     
     # Environment configuration
     environment:
@@ -56,7 +59,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      # Cover Flask + pandas cold start so boot probes don't fail (issue #1.17).
+      start_period: 20s
     
     # Restart policy
     restart: unless-stopped
