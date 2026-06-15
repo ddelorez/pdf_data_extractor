@@ -57,8 +57,12 @@ jobs:
       
       - name: Build images with docker-compose
         run: docker compose build
-      
+
       - name: Start services
+        # SECRET_KEY is required in production (issue #1.6); supply a throwaway
+        # CI value so the backend boots and the health checks below are meaningful.
+        env:
+          SECRET_KEY: ci-not-a-production-secret-0123456789abcdef
         run: |
           docker compose up -d
           sleep 5

@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template
-from flask_cors import CORS
 
 from src.config import get_logger
 from services.extraction_service import ExtractionService
@@ -19,6 +18,43 @@ from routes.extraction import extraction_bp, set_service
 load_dotenv()
 
 logger = get_logger(__name__)
+
+# Known-insecure SECRET_KEY values that must never be used in production.
+# The app refuses to boot if FLASK_ENV=production and the key is missing or one
+# of these placeholders (see resolve_secret_key / issue #1.6).
+INSECURE_SECRET_KEYS = {
+    "",
+    "dev-key-not-for-production",
+    "your-secure-secret-key-here",
+    "change-me",
+    "changeme",
+    "secret",
+}
+
+DEV_SECRET_KEY = "dev-key-not-for-production"
+
+
+def resolve_secret_key(testing: bool = False) -> str:
+    """
+    Resolve the Flask SECRET_KEY, failing fast on an insecure production config.
+
+    In production (FLASK_ENV=production) a real, non-placeholder key is required
+    or the app refuses to start. Outside production (and under TESTING) a
+    development fallback is used so local/test runs work without configuration.
+    """
+    secret_key = os.getenv("SECRET_KEY")
+    is_production = os.getenv("FLASK_ENV", "").strip().lower() == "production"
+
+    if is_production and not testing:
+        if not secret_key or secret_key.strip().lower() in INSECURE_SECRET_KEYS:
+            raise RuntimeError(
+                "SECRET_KEY must be set to a secure, non-default value when "
+                "FLASK_ENV=production. Set the SECRET_KEY environment variable "
+                "(e.g. `python -c \"import secrets; print(secrets.token_hex(32))\"`)."
+            )
+        return secret_key
+
+    return secret_key or DEV_SECRET_KEY
 
 
 def create_app(config=None):
@@ -38,19 +74,34 @@ def create_app(config=None):
         Configured Flask app instance
     """
     app = Flask(__name__, template_folder='templates')
-    
+
     # ====================== CONFIGURATION ======================
-    
-    # Get configuration from environment or defaults
+
+    # Get configuration from environment or defaults.
+    #
+    # Size limits (issue #1.8) — there are three distinct ceilings:
+    #   * MAX_CONTENT_LENGTH (here)  — Flask caps the *entire* multipart request
+    #     body at MAX_UPLOAD_SIZE (default 100 MB). This is the real upload cap:
+    #     all files in one /api/extract request must together fit under it
+    #     (over -> 413).
+    #   * MAX_BATCH_FILES (services) — at most 50 files per request.
+    #   * Container memory (docker-compose) — 2 GB hard limit.
+    # So the worst-case in-flight upload is ~100 MB (one request), not
+    # 50 x 100 MB; the per-file size is bounded only by the request total.
     app.config['MAX_CONTENT_LENGTH'] = int(
         os.getenv('MAX_UPLOAD_SIZE', 104857600)  # 100 MB default
     )
     app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', '/app/uploads')
     app.config['TEMPLATE_FOLDER'] = os.getenv('TEMPLATE_FOLDER', '/app/templates')
     app.config['OUTPUT_FOLDER'] = os.getenv('OUTPUT_FOLDER', '/app/outputs')
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-not-for-production')
     app.config['JSON_SORT_KEYS'] = False
-    
+
+    # Resolve SECRET_KEY (fail-fast on insecure production config — issue #1.6).
+    # Use the incoming config's TESTING flag so the test suite is exempt.
+    app.config['SECRET_KEY'] = resolve_secret_key(
+        testing=bool((config or {}).get('TESTING'))
+    )
+
     # Override with provided config
     if config:
         app.config.update(config)
@@ -76,20 +127,15 @@ def create_app(config=None):
     # artifacts. Skipped under TESTING so the test suite doesn't spawn threads.
     if not app.config.get('TESTING'):
         extraction_service.start_cleanup_sweeper()
-    
+
     # ====================== CORS CONFIGURATION ======================
-    
-    # Enable CORS for React frontend (Phase 3)
-    cors_origins = os.getenv('CORS_ORIGINS', '*')
-    if cors_origins == '*':
-        CORS(app)
-        logger.info("CORS enabled for all origins")
-    else:
-        CORS(app, resources={
-            r"/api/*": {"origins": cors_origins.split(',')}
-        })
-        logger.info(f"CORS enabled for: {cors_origins}")
-    
+    #
+    # CORS is owned entirely by the nginx reverse proxy (frontend/nginx.conf),
+    # which is the single entry point in the deployed topology. Flask-CORS was
+    # removed (issue #1.9) to avoid duplicate/ conflicting Access-Control-* headers.
+    # If the backend is ever exposed directly (without nginx), CORS must be
+    # reintroduced here or handled by whatever proxy fronts it.
+
     # ====================== BLUEPRINT REGISTRATION ======================
     
     # Register API blueprint

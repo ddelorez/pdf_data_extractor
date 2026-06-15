@@ -77,8 +77,29 @@ class TestApiStatusEndpoint:
     def test_status_endpoint_accepts_job_id(self, client):
         """Test status endpoint accepts job ID parameter"""
         response = client.get('/api/status/test-123')
-        # Should handle the request (may not find it, but should not error on format)
-        assert response.status_code in [200, 404]
+        # 'test-123' is not a UUID, so it's now rejected as malformed (400);
+        # a valid-but-unknown UUID would 404 (issue #1 job_id validation).
+        assert response.status_code in [200, 404, 400]
+
+    def test_status_endpoint_rejects_non_uuid(self, client):
+        """Malformed (non-UUID) job_id must be rejected with 400."""
+        response = client.get('/api/status/not-a-uuid')
+        assert response.status_code == 400
+
+    def test_status_endpoint_rejects_path_traversal(self, client):
+        """A path-traversal job_id must never be served.
+
+        A single dot-segment reaches the handler and is rejected as a malformed
+        UUID (400); encoded-slash payloads don't match the <job_id> route at all
+        (404). Either way it never reaches the filesystem / returns 200.
+        """
+        assert client.get('/api/status/..').status_code == 400
+        assert client.get('/api/status/..%2F..%2Fetc%2Fpasswd').status_code in (400, 404)
+
+    def test_status_endpoint_valid_uuid_unknown_is_404(self, client):
+        """A well-formed but unknown UUID is 404, not 400."""
+        response = client.get('/api/status/11111111-1111-1111-1111-111111111111')
+        assert response.status_code == 404
 
 
 @pytest.mark.integration
@@ -111,7 +132,8 @@ class TestApiProcessEndpoint:
         from services.extraction_service import ProcessingJob, JobStatus
 
         service = ext._service
-        job = ProcessingJob("conflict-job", str(service.upload_folder))
+        job_id = "22222222-2222-2222-2222-222222222222"  # valid UUID (passes validation)
+        job = ProcessingJob(job_id, str(service.upload_folder))
         pdf = job.job_folder / "input.pdf"
         pdf.write_bytes(b"%PDF-1.4")
         job.files_submitted = [pdf]
