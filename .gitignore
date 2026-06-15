@@ -77,6 +77,7 @@ docker-compose.override.yml
 
 # Test coverage
 .coverage
+coverage.xml
 htmlcov/
 .pytest_cache/
 pytest_output.txt

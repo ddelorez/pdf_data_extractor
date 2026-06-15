@@ -69,8 +69,9 @@ jobs:
             -v
 
       - name: Check coverage thresholds
-        run: uv run coverage report --fail-under=60
-        continue-on-error: true
+        # Now an enforced gate (was informational). CI-scoped coverage is ~69%;
+        # threshold set to 65 with headroom. Ratchet up as coverage grows.
+        run: uv run coverage report --fail-under=65
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
