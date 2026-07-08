@@ -13,6 +13,7 @@ from services.extraction_service import (
     ExtractionService,
     ProcessingError,
     FileValidationError,
+    NonPdfFileError,
     JobConflictError,
 )
 
@@ -82,8 +83,9 @@ def extract_files():
         }
     
     Errors:
-        400: No files provided or invalid file types
+        400: No files provided or other validation failure
         413: File too large
+        418: A non-PDF file was uploaded (this service only brews PDFs)
         500: Server error
     """
     try:
@@ -116,13 +118,22 @@ def extract_files():
             "files_received": len(files)
         }), 202  # 202 Accepted
     
+    except NonPdfFileError as e:
+        # Non-PDF upload: this service brews PDFs, not whatever you sent it.
+        # Caught before FileValidationError (its parent) so it wins the 418.
+        logger.warning(f"Non-PDF upload rejected: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 418  # I'm a teapot
+
     except FileValidationError as e:
         logger.warning(f"File validation error: {e}")
         return jsonify({
             "status": "error",
             "message": str(e)
         }), 400
-    
+
     except Exception as e:
         logger.exception("Unexpected error in extract endpoint")
         # Don't leak internal exception details to the client (issue C5).

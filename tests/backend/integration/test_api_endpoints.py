@@ -42,13 +42,13 @@ class TestApiExtractEndpoint:
         assert response.status_code != 200
     
     def test_extract_endpoint_invalid_file(self, client):
-        """Test extraction with non-PDF file"""
+        """Test extraction with non-PDF file returns 418 (I'm a teapot)"""
         data = {
             'files': (NamedTemporaryFile(suffix='.txt'), 'test.txt')
         }
         response = client.post('/api/extract', data=data)
-        # Should reject non-PDF or return error
-        assert response.status_code in [400, 422, 500]
+        # Non-PDF uploads are rejected with 418 (this service only brews PDFs)
+        assert response.status_code == 418
     
     def test_extract_endpoint_cors_headers(self, client):
         """Test extraction endpoint includes CORS headers"""
