@@ -15,6 +15,7 @@ from app import resolve_secret_key, create_app
 from services.extraction_service import (
     ExtractionService,
     FileValidationError,
+    NonPdfFileError,
     _looks_like_pdf,
 )
 from routes.extraction import validate_job_id
@@ -106,7 +107,17 @@ class TestSubmitFilesMagicBytes:
             filename="malicious.pdf",
             content_type="application/pdf",
         )
-        with pytest.raises(FileValidationError, match="not a valid PDF"):
+        # NonPdfFileError (subclass of FileValidationError) -> route maps to 418
+        with pytest.raises(NonPdfFileError, match="not a valid PDF"):
+            service.submit_files([fake])
+
+    def test_non_pdf_extension_rejected(self, service):
+        fake = FileStorage(
+            stream=io.BytesIO(b"%PDF-1.7 real pdf bytes but wrong name"),
+            filename="notes.txt",
+            content_type="text/plain",
+        )
+        with pytest.raises(NonPdfFileError, match="Invalid file type"):
             service.submit_files([fake])
 
 

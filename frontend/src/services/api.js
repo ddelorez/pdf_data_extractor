@@ -20,7 +20,9 @@ apiClient.interceptors.response.use(
         // Payload too large: surface a clear message instead of the raw 413 (RECOMMENDATIONS E4)
         throw new Error('Upload too large: total file size exceeds the server limit (100 MB).');
       }
-      const message = error.response.data?.error || error.response.statusText || 'Server error occurred';
+      // Backend error bodies use `message` (e.g. /extract) or `error` (e.g. /download);
+      // read both so the server's text (including the 418 non-PDF message) actually surfaces.
+      const message = error.response.data?.message || error.response.data?.error || error.response.statusText || 'Server error occurred';
       throw new Error(message);
     } else if (error.request) {
       // Request made but no response

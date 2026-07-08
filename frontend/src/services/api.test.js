@@ -189,5 +189,31 @@ describe('API Service', () => {
     it('should be configured', () => {
       expect(mockClient.interceptors.response.use).toHaveBeenCalled()
     })
+
+    // Grab the error handler registered at import time so we can exercise the
+    // body-key resolution directly (the request-level tests above mock the
+    // client and never run this callback).
+    const errorHandler = () =>
+      mockClient.interceptors.response.use.mock.calls[0][1]
+
+    it('surfaces the `message` body key (e.g. the 418 non-PDF message)', () => {
+      expect(() =>
+        errorHandler()({
+          response: {
+            status: 418,
+            data: { status: 'error', message: 'notes.txt is not a valid PDF file.' },
+            statusText: "I'M A TEAPOT",
+          },
+        })
+      ).toThrow('notes.txt is not a valid PDF file.')
+    })
+
+    it('falls back to the `error` body key (e.g. /download)', () => {
+      expect(() =>
+        errorHandler()({
+          response: { status: 500, data: { error: 'boom' }, statusText: 'Server Error' },
+        })
+      ).toThrow('boom')
+    })
   })
 })

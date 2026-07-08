@@ -114,6 +114,16 @@ class FileValidationError(Exception):
     pass
 
 
+class NonPdfFileError(FileValidationError):
+    """Raised when an upload is not a PDF (wrong extension or magic bytes).
+
+    Subclasses FileValidationError so generic handlers still treat it as a
+    validation failure, but the route layer maps it specifically to HTTP 418
+    ("I'm a teapot") — this service brews PDFs, not whatever you sent it.
+    """
+    pass
+
+
 class JobConflictError(ProcessingError):
     """Raised when a job is asked to process while not in a PENDING state.
 
@@ -433,7 +443,7 @@ class ExtractionService:
             
             # Validate file extension
             if not file.filename.lower().endswith('.pdf'):
-                raise FileValidationError(
+                raise NonPdfFileError(
                     f"Invalid file type: {file.filename}. Only PDF files are supported."
                 )
 
@@ -445,7 +455,7 @@ class ExtractionService:
             except Exception as e:
                 raise FileValidationError(f"Could not read file {file.filename}: {str(e)}")
             if not _looks_like_pdf(header):
-                raise FileValidationError(
+                raise NonPdfFileError(
                     f"Invalid PDF content: {file.filename} is not a valid PDF file."
                 )
 
