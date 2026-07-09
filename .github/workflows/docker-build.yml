@@ -28,10 +28,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v4
       
       - name: Build backend Docker image
         run: |
@@ -53,7 +53,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       
       - name: Build images with docker-compose
         run: docker compose build
@@ -92,10 +92,16 @@ jobs:
   security:
     name: Docker Security Scan
     runs-on: ubuntu-latest
-    
+    # Needed so codeql-action/upload-sarif can post Trivy results to the
+    # Security tab (otherwise: "Resource not accessible by integration").
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       
       - name: Build backend image for scanning
         run: docker build -t pdf-extractor-backend:scan -f Dockerfile .
@@ -131,10 +137,14 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-backend.sarif'
+          # Distinct category per scan: two uploads in one job with the same
+          # category collide ("only one run ... allowed per category").
+          category: trivy-backend
         continue-on-error: true
-      
+
       - name: Upload Trivy results (frontend) to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-frontend.sarif'
+          category: trivy-frontend
         continue-on-error: true
