@@ -375,3 +375,84 @@ def get_format_config(format_type: str) -> dict:
         }
     else:
         raise ValueError(f"Unknown format type: {format_type!r}")
+
+
+# ========================= DPR EXCEL -> EXCEL FORMAT CONFIG =========================
+# Partner "Walter Oil" monthly offshore Daily Production Report (DPR) workbooks.
+# Unlike the PDF pipeline, the input here is an .xlsx workbook whose daily sheets
+# are reshaped into a flat "master" long-format workbook and appended over time.
+# The mapping is coordinate-driven because the partner's layout is fixed month to
+# month; see plans/EXCEL_TO_EXCEL_DPR_SUPPORT.md for the reverse-engineered geometry.
+
+# Output "master" long-format columns, in order. Positions 8-10 (1-indexed) are
+# intentionally blank spacer columns preserved from the partner's own template;
+# a value of None marks a spacer whose header is written empty.
+DPR_MASTER_COLUMNS = [
+    "well",
+    "date",
+    "Daily Oil",
+    "Daily Gas",
+    "Daily Water",
+    "BHP",
+    "FTP",
+    None,          # spacer
+    None,          # spacer
+    None,          # spacer
+    "Choke Size",
+]
+
+# The "real" (non-spacer) data fields carried on each extracted record, in the
+# order the extractor emits them. Excludes the blank spacer columns.
+DPR_RECORD_FIELDS = [
+    "well",
+    "date",
+    "Daily Oil",
+    "Daily Gas",
+    "Daily Water",
+    "BHP",
+    "FTP",
+    "Choke Size",
+]
+
+DPR_MASTER_DATA_SHEET = "Data"
+DPR_MASTER_QA_SHEET = "QA Flags"
+DPR_QA_COLUMNS = ["Workbook", "Sheet", "Concern"]
+
+# Registry of supported Excel input formats. One entry per partner layout; adding
+# a new key is enough to support another partner without touching extractor code.
+DPR_EXCEL_FORMATS = {
+    "walter_oil_dpr": {
+        # --- daily-sheet detection signature ---
+        # A daily sheet carries the production date next to a label cell and a
+        # recognisable header row. ' Summary' and 'Meter totals' fail this test.
+        "date_label_cell": "L4",
+        "date_label": "Production Date",
+        "header_row": 8,
+        "header_signature": [
+            "Well Number",
+            "Choke #2",
+            "Est Allocated Daily",
+        ],
+        # --- extraction geometry ---
+        # Daily sheets are named with an integer (the *report* day); the
+        # authoritative production date lives in date_cell and may lag the sheet
+        # name by one (sheet "1" wraps to the last day of the month), so callers
+        # must key off date_cell, never the sheet name.
+        "date_cell": "N4",
+        "well_col": "C",
+        "well_row_ranges": [(11, 19), (21, 23)],  # inclusive; row 20 is a blank gap
+        # output field -> source column letter
+        "columns": {
+            "Daily Oil": "J",
+            "Daily Gas": "I",
+            "Daily Water": "K",
+            "BHP": "E",
+            "FTP": "D",
+            "Choke Size": "H",
+        },
+        # non-numeric sentinels appearing in numeric columns -> blank cell
+        "sentinels": ["S/I", "N/A", "NA"],
+    },
+}
+
+DPR_DEFAULT_FORMAT = "walter_oil_dpr"
