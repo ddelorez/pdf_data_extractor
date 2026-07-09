@@ -12,12 +12,14 @@ locked policies:
 Two sheets are written: ``Data`` (the long-format table) and ``QA Flags``.
 """
 
+import os
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
@@ -46,19 +48,37 @@ def _coerce_date(value: Any) -> Optional[date]:
         return None
 
 
-def load_existing_master(master_path: Path) -> pd.DataFrame:
+class MasterReadError(Exception):
+    """Raised when an existing master workbook cannot be read.
+
+    Deliberately fails loud instead of degrading to an empty master: silently
+    returning no rows here would let a job report success while dropping the
+    entire prior history (review finding HIGH-2).
+    """
+    pass
+
+
+def load_existing_master(
+    master_path: Path,
+    qa_flags: Optional[List[Dict[str, str]]] = None,
+) -> pd.DataFrame:
     """Read an existing master's ``Data`` sheet into the internal record schema.
 
     Selects only the real (non-spacer) columns by header name, tolerating the
     ``Unnamed: N`` spacer columns pandas assigns to the blank template columns.
-    Returns an empty DataFrame (with the right columns) if the sheet is absent.
+
+    Fails loud (raises :class:`MasterReadError`) if the workbook cannot be read,
+    rather than silently discarding history. Rows whose well/date cannot be
+    parsed are excluded, and — because that also silently shrinks history — the
+    count is logged and, when *qa_flags* is provided, surfaced as a QA flag.
     """
     master_path = Path(master_path)
     try:
         raw = pd.read_excel(master_path, sheet_name=DPR_MASTER_DATA_SHEET)
     except Exception as exc:
-        logger.warning("Could not read existing master %s: %s", master_path.name, exc)
-        return pd.DataFrame(columns=DPR_RECORD_FIELDS)
+        raise MasterReadError(
+            f"Could not read existing master {master_path.name}: {exc}"
+        ) from exc
 
     # Keep only known fields; missing ones become all-NA columns.
     present = [c for c in DPR_RECORD_FIELDS if c in raw.columns]
@@ -68,8 +88,23 @@ def load_existing_master(master_path: Path) -> pd.DataFrame:
             df[field] = pd.NA
     df = df[DPR_RECORD_FIELDS]
     df["date"] = df["date"].map(_coerce_date)
+    n_before = len(df)
     df = df[df["well"].notna() & df["date"].notna()]
+    n_dropped = n_before - len(df)
     df["well"] = df["well"].astype(str).str.strip()
+
+    if n_dropped:
+        msg = (
+            f"{n_dropped} existing master row(s) had an unparseable well/date "
+            "and were excluded from the merged output"
+        )
+        logger.warning("%s (%s)", msg, master_path.name)
+        if qa_flags is not None:
+            qa_flags.append({
+                "Workbook": master_path.name,
+                "Sheet": DPR_MASTER_DATA_SHEET,
+                "Concern": msg,
+            })
     logger.info("Loaded %d existing master row(s) from %s", len(df), master_path.name)
     return df
 
@@ -92,16 +127,18 @@ def _records_to_df(records: List[Dict[str, Any]]) -> pd.DataFrame:
 def merge_master(
     new_records: List[Dict[str, Any]],
     existing_master_path: Optional[Path] = None,
+    qa_flags: Optional[List[Dict[str, str]]] = None,
 ) -> pd.DataFrame:
     """Combine new records with an optional existing master.
 
     Ordering guarantees the dedup keeps the newest upload: existing rows first,
     then incoming, then ``drop_duplicates(keep="last")`` on ``(well, date)``.
-    Result is sorted by ``date`` then ``well``.
+    Result is sorted by ``date`` then ``well``. Any QA flags raised while reading
+    the existing master (dropped rows) are appended to *qa_flags* if provided.
     """
     frames: List[pd.DataFrame] = []
     if existing_master_path is not None:
-        frames.append(load_existing_master(existing_master_path))
+        frames.append(load_existing_master(existing_master_path, qa_flags=qa_flags))
     frames.append(_records_to_df(new_records))
 
     combined = pd.concat(frames, ignore_index=True)
@@ -118,26 +155,19 @@ def merge_master(
     return combined
 
 
-def write_dpr_master(
-    new_records: List[Dict[str, Any]],
+def write_master_dataframe(
+    merged: pd.DataFrame,
     output_path: Path,
-    existing_master_path: Optional[Path] = None,
     qa_flags: Optional[List[Dict[str, str]]] = None,
-) -> pd.DataFrame:
-    """Write the combined master workbook to *output_path*.
+) -> None:
+    """Write an already-merged ``Data`` DataFrame + QA Flags to *output_path*.
 
-    Args:
-        new_records: Freshly-extracted DPR records.
-        output_path: Destination ``.xlsx``.
-        existing_master_path: Prior master to append to (optional).
-        qa_flags: QA-Flags rows to write to the second sheet (optional).
-
-    Returns:
-        The merged ``Data`` DataFrame (internal schema), for callers that want
-        row counts / well counts without re-reading the file.
+    Separated from merging so callers that need the merged frame for other
+    purposes (gap detection, CSV mirror, counts) can merge once and write once
+    (review finding MED-4). The file is written atomically via a temp file +
+    ``os.replace`` so a crash mid-save never leaves a truncated workbook.
     """
     output_path = Path(output_path)
-    merged = merge_master(new_records, existing_master_path)
 
     wb = Workbook()
     ws = wb.active
@@ -181,9 +211,39 @@ def write_dpr_master(
             qa_ws.cell(row=r, column=col_idx, value=flag.get(header))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(str(output_path))
+    # Atomic write: save to a temp file in the same dir, then os.replace so a
+    # crash mid-save can't leave a truncated/partial master workbook.
+    fd, tmp_name = tempfile.mkstemp(dir=str(output_path.parent), suffix=".xlsx.tmp")
+    os.close(fd)
+    try:
+        wb.save(tmp_name)
+        os.replace(tmp_name, str(output_path))
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
     logger.info(
         "Wrote DPR master %s: %d data row(s), %d QA flag(s)",
         output_path.name, len(merged), len(qa_flags or []),
     )
+
+
+def write_dpr_master(
+    new_records: List[Dict[str, Any]],
+    output_path: Path,
+    existing_master_path: Optional[Path] = None,
+    qa_flags: Optional[List[Dict[str, str]]] = None,
+) -> pd.DataFrame:
+    """Merge *new_records* into an optional existing master and write the result.
+
+    Convenience wrapper: merges then writes. Callers that also need the merged
+    frame (e.g. for gap-flag computation or a CSV mirror) should instead call
+    :func:`merge_master` once and pass the result to :func:`write_master_dataframe`.
+
+    Returns the merged ``Data`` DataFrame (internal schema).
+    """
+    merged = merge_master(new_records, existing_master_path, qa_flags=qa_flags)
+    write_master_dataframe(merged, output_path, qa_flags=qa_flags)
     return merged

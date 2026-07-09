@@ -9,6 +9,7 @@ import shutil
 import json
 import tempfile
 import threading
+import zipfile
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from pathlib import Path
@@ -33,7 +34,11 @@ from src.output.excel_writer import write_excel
 from src.output.csv_writer import write_csv
 from src.output.flowback_excel_writer import write_flowback_excel
 from src.output.flowback_csv_writer import write_flowback_csv
-from src.output.dpr_master_writer import write_dpr_master, merge_master
+from src.output.dpr_master_writer import (
+    merge_master,
+    write_master_dataframe,
+    MasterReadError,
+)
 
 logger = get_logger(__name__)
 
@@ -66,6 +71,51 @@ _PDF_SNIFF_BYTES = 1024
 # Accepted upload extensions mapped to a short "kind" tag used for on-disk naming
 # and downstream routing (PDF pipeline vs DPR Excel->Excel pipeline).
 _ACCEPTED_EXTENSIONS = {".pdf": "pdf", ".xlsx": "xlsx"}
+
+# Cap on an .xlsx's total *uncompressed* size. A small zip (well under
+# MAX_CONTENT_LENGTH) can expand to many GB when openpyxl parses it — a
+# decompression bomb that would exhaust the container's memory (review MED-3).
+MAX_XLSX_UNCOMPRESSED_BYTES = int(
+    os.environ.get('MAX_XLSX_UNCOMPRESSED_BYTES', str(500 * 1024 * 1024))
+)
+
+
+def _check_xlsx_within_limits(path: Path) -> None:
+    """Reject an .xlsx whose uncompressed contents exceed the size cap.
+
+    Guards against decompression bombs before any openpyxl/pandas parse loads
+    the archive into memory (review MED-3). Raises ProcessingError on a bad zip
+    or an over-limit archive.
+    """
+    try:
+        with zipfile.ZipFile(str(path)) as zf:
+            total = sum(info.file_size for info in zf.infolist())
+    except zipfile.BadZipFile as exc:
+        raise ProcessingError(f"Not a valid .xlsx (corrupt archive): {path.name}") from exc
+    if total > MAX_XLSX_UNCOMPRESSED_BYTES:
+        raise ProcessingError(
+            f"Refusing {path.name}: uncompressed size "
+            f"{total / (1024 * 1024):.0f} MB exceeds the "
+            f"{MAX_XLSX_UNCOMPRESSED_BYTES / (1024 * 1024):.0f} MB limit."
+        )
+
+
+def _run_with_timeout(fn, *args, timeout: float, label: str):
+    """Run ``fn(*args)`` under a wall-clock timeout in a single-use worker.
+
+    Generic sibling of :func:`_process_pdf_with_timeout` used by the DPR path so
+    a pathological workbook (degenerate XML that makes openpyxl/pandas spin)
+    can't pin a pool worker indefinitely (review MED-2). Same soft-timeout
+    caveat: the abandoned worker keeps running until it finishes.
+    """
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dpr-extract")
+    future = executor.submit(fn, *args)
+    try:
+        return future.result(timeout=timeout)
+    except FuturesTimeoutError:
+        raise ProcessingError(f"Processing timed out after {timeout:g}s: {label}")
+    finally:
+        executor.shutdown(wait=False)
 
 
 def _looks_like_pdf(header: bytes) -> bool:
@@ -751,6 +801,10 @@ class ExtractionService:
         Runs inside process_job's try/except, so raising ProcessingError here is
         caught and recorded as job error by the caller.
         """
+        # Guard against decompression bombs before any workbook is parsed.
+        for path in job.files_submitted:
+            _check_xlsx_within_limits(path)
+
         # Classify uploaded workbooks by content.
         master_path: Optional[Path] = None
         raw_paths: List[Path] = []
@@ -787,7 +841,12 @@ class ExtractionService:
                 return {"status": "cancelled", "job_id": job_id}
             fmt_key = detect_dpr_format_key(path) or DPR_DEFAULT_FORMAT
             try:
-                recs = extract_dpr_records(path, format_key=fmt_key, source_name=path.name)
+                recs = _run_with_timeout(
+                    extract_dpr_records, path, fmt_key, path.name,
+                    timeout=self.pdf_timeout, label=path.name,
+                )
+            except ProcessingError:
+                raise
             except Exception as e:
                 raise ProcessingError(f"Failed to extract {path.name}: {str(e)}")
             all_records.extend(recs)
@@ -805,9 +864,29 @@ class ExtractionService:
         if not all_records:
             raise ProcessingError("No records extracted from the uploaded DPR workbook(s).")
 
-        # Merge once to compute cross-month gap flags and summary counts, then
-        # write the master with the complete QA set.
-        merged = merge_master(all_records, existing_master_path=master_path)
+        # Warn loudly (via QA flag) when no prior master was supplied: the output
+        # then contains ONLY the uploaded month(s), and a user who adopts it as
+        # the new master would silently lose all prior history (review HIGH-3).
+        if master_path is None:
+            qa_flags.append({
+                "Workbook": "Uploaded batch",
+                "Sheet": "-",
+                "Concern": (
+                    "No existing master supplied — output contains ONLY the "
+                    "uploaded month(s). Do not treat it as the full master."
+                ),
+            })
+
+        # Merge exactly once (review MED-4): merge_master both reads the existing
+        # master (surfacing any dropped-row QA flags) and gives us the frame used
+        # for gap detection, the CSV mirror, counts, and the Excel write.
+        try:
+            merged = merge_master(
+                all_records, existing_master_path=master_path, qa_flags=qa_flags
+            )
+        except MasterReadError as e:
+            # Fail loud rather than silently producing a history-free master.
+            raise ProcessingError(str(e))
         gap_flags = check_month_gaps(list(merged["date"])) if not merged.empty else []
         all_qa = qa_flags + gap_flags
 
@@ -815,12 +894,7 @@ class ExtractionService:
         csv_output_path = self.output_folder / f"{job_id}_output.csv"
 
         try:
-            write_dpr_master(
-                all_records,
-                excel_output_path,
-                existing_master_path=master_path,
-                qa_flags=all_qa,
-            )
+            write_master_dataframe(merged, excel_output_path, qa_flags=all_qa)
             job.output_excel = excel_output_path
             logger.info(f"DPR master workbook written: {excel_output_path}")
         except Exception as e:

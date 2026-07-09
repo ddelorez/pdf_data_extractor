@@ -132,6 +132,33 @@ class TestDprServicePipeline:
         concerns = [qa.cell(row=r, column=3).value for r in range(2, qa.max_row + 1)]
         assert any(c and "2023-12-31" in c for c in concerns)
 
+    def test_no_master_supplied_adds_qa_flag(self, service, tmp_path):
+        # HIGH-3: a raw-only batch succeeds but must warn that the output is
+        # history-free so the user doesn't adopt it as the full master.
+        raw = build_dpr_workbook(
+            tmp_path / "april.xlsx",
+            month_dates_by_sheet={"2": datetime(2026, 4, 1)},
+        )
+        job_id = _register_job_with_files(service, [raw])
+        service.process_job(job_id)
+
+        wb = load_workbook(service.output_folder / f"{job_id}_output.xlsx")
+        qa = wb["QA Flags"]
+        concerns = [qa.cell(row=r, column=3).value for r in range(2, qa.max_row + 1)]
+        assert any(c and "No existing master" in c for c in concerns)
+
+    def test_decompression_bomb_guard(self, service, tmp_path, monkeypatch):
+        # MED-3: an .xlsx whose uncompressed size exceeds the cap is refused
+        # before any parse. Force a tiny cap so a normal file trips it.
+        monkeypatch.setattr(svc, "MAX_XLSX_UNCOMPRESSED_BYTES", 10)
+        raw = build_dpr_workbook(
+            tmp_path / "april.xlsx",
+            month_dates_by_sheet={"2": datetime(2026, 4, 1)},
+        )
+        job_id = _register_job_with_files(service, [raw])
+        with pytest.raises(ProcessingError, match="exceeds"):
+            service.process_job(job_id)
+
     def test_unrecognized_workbook_errors(self, service, tmp_path):
         plain = build_plain_workbook(tmp_path / "plain.xlsx")
         job_id = _register_job_with_files(service, [plain])
