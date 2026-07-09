@@ -1220,27 +1220,12 @@ button:disabled {
   }
 }
 
-/* System preference dark mode fallback - for when toggle is not used */
-@media (prefers-color-scheme: dark) {
-  :root:not(.dark-mode) {
-    /* Only apply if dark-mode class is not set */
-    --primary-color: #4A90E2;
-    --accent-color: #FF8C42;
-    --success-color: #66BB6A;
-    --error-color: #EF5350;
-    --warning-color: #FFA726;
-    --neutral-dark: #E0E0E0;
-    --neutral-light: #2A2A2A;
-    --neutral-border: #404040;
-    --text-primary: #E0E0E0;
-    --text-secondary: #B0B0B0;
-    --text-light: #808080;
-    --bg-primary: #1E1E1E;
-    --bg-secondary: #2A2A2A;
-    --bg-tertiary: #333333;
-  }
-
-  body {
-    background-color: var(--bg-primary);
-  }
-}
+/* NOTE: A `@media (prefers-color-scheme: dark)` fallback that targeted
+   `:root:not(.dark-mode)` used to live here. It broke the manual toggle for
+   users whose OS is in dark mode: removing the `.dark-mode` class (toggling to
+   light) let this higher-specificity rule re-apply the dark palette, so the
+   page stayed dark and the button appeared to do nothing. The initial theme
+   already respects the OS preference in JS (see the useState initializer in
+   App.jsx, which reads `prefers-color-scheme` on first visit), so this CSS
+   fallback was both redundant and harmful and has been removed. Light mode is
+   now always the bare `:root` palette; dark mode is the `.dark-mode` class. */
