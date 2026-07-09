@@ -441,7 +441,12 @@ DPR_EXCEL_FORMATS = {
         "date_cell": "N4",
         "well_col": "C",
         "well_row_ranges": [(11, 19), (21, 23)],  # inclusive; row 20 is a blank gap
-        # output field -> source column letter
+        # output field -> source column letter.
+        # NOTE: every mapped column is coerced numerically (non-numeric -> blank).
+        # Verified against the reference data that Choke #2 (col H) is recorded
+        # numerically (64ths, e.g. 128) with only "S/I" as text, so nothing
+        # legitimate is lost. A future partner recording choke as text ("16/64")
+        # would need a string pass-through for that column instead.
         "columns": {
             "Daily Oil": "J",
             "Daily Gas": "I",
