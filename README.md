@@ -297,9 +297,9 @@ A: Verify `template.xlsx` exists and `COL_MAP` matches your template columns
 ## Version
 
 - **Project Version**: 2.0
-- **Phases**: 1–4 complete (core engine, Flask backend, React frontend, advanced features)
-- **Last updated**: 2026-06-14 (dependency/CI/Docker hardening + backend test repair)
-- **Status**: Deployed internally; remaining backend hardening tracked in issues #1 / #7
+- **Phases**: 1–3 complete (core engine, Flask backend, React frontend); Phase 4 (advanced features) in progress
+- **Last updated**: 2026-07-09 (status-response shape cleanup; audit-remediation items from issue #1 largely resolved)
+- **Status**: Deployed internally
 
 ---
 

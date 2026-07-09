@@ -48,11 +48,11 @@ const ResultsViewer = ({ jobId, results, onProcessMore }) => {
         <div className="results-summary">
           <div className="summary-stat">
             <span className="stat-label">Total Records</span>
-            <span className="stat-value">{results.records || 0}</span>
+            <span className="stat-value">{results.records_valid || 0}</span>
           </div>
           <div className="summary-stat">
             <span className="stat-label">Wells Found</span>
-            <span className="stat-value">{results.wells || 0}</span>
+            <span className="stat-value">{results.unique_wells || 0}</span>
           </div>
           {results.date_range && (
             <div className="summary-stat">

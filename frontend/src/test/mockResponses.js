@@ -22,8 +22,8 @@ export const mockJobStatus = {
   job_id: 'test-job-123',
   status: 'completed',
   progress: 100,
-  records: 45,
-  wells: ['HORIZON 10-01-15A', 'WILDCAT 05-12-18B'],
+  records_valid: 45,
+  unique_wells: 2,
   message: 'Job completed',
 }
 
@@ -31,8 +31,8 @@ export const mockJobStatusProcessing = {
   job_id: 'test-job-123',
   status: 'processing',
   progress: 50,
-  records: null,
-  wells: null,
+  records_valid: 0,
+  unique_wells: 0,
   message: 'Job is being processed',
 }
 
