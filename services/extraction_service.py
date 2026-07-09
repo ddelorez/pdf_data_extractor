@@ -266,8 +266,6 @@ class ProcessingJob:
             "records_valid": self.records_valid,
             "records_invalid": self.records_invalid,
             "unique_wells": self.unique_wells,
-            "records": self.records_valid,     # alias for frontend
-            "wells": self.unique_wells,        # alias for frontend
         }
     
     def cleanup(self) -> None:

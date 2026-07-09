@@ -88,16 +88,16 @@ const ProcessingStatus = ({
         {/* Status Details */}
         {status && (
           <div className="status-details">
-            {status.records !== undefined && (
+            {status.records_valid !== undefined && (
               <div className="detail-row">
                 <span className="detail-label">Records Processed:</span>
-                <span className="detail-value">{status.records}</span>
+                <span className="detail-value">{status.records_valid}</span>
               </div>
             )}
-            {status.wells !== undefined && (
+            {status.unique_wells !== undefined && (
               <div className="detail-row">
                 <span className="detail-label">Wells Found:</span>
-                <span className="detail-value">{status.wells}</span>
+                <span className="detail-value">{status.unique_wells}</span>
               </div>
             )}
             {status.message && (

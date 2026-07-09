@@ -89,6 +89,9 @@ screenshots/
 # Test reference files
 Reference-files/
 
+# Claude Code agent worktrees (transient, per-session isolated checkouts)
+.claude/worktrees/
+
 # OS
 *.DS_Store
 Thumbs.db
