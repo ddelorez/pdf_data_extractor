@@ -18,14 +18,22 @@ from enum import Enum
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
-from src.config import get_logger, START_ROW, COL_MAP, DEFAULT_TIMEOUT
+from src.config import get_logger, START_ROW, COL_MAP, DEFAULT_TIMEOUT, DPR_DEFAULT_FORMAT
 from src.core.pdf_processor import process_pdf
+from src.core.excel_format_detector import (
+    detect_excel_format,
+    detect_dpr_format_key,
+    ExcelFormat,
+)
+from src.core.excel_dpr_extraction import extract_dpr_records
 from src.data.validator import validate_records
 from src.data.deduplicator import deduplicate_and_sort
+from src.data.dpr_qa import check_workbook_dates, check_month_gaps
 from src.output.excel_writer import write_excel
 from src.output.csv_writer import write_csv
 from src.output.flowback_excel_writer import write_flowback_excel
 from src.output.flowback_csv_writer import write_flowback_csv
+from src.output.dpr_master_writer import write_dpr_master, merge_master
 
 logger = get_logger(__name__)
 
@@ -52,8 +60,12 @@ _processing_executor = ThreadPoolExecutor(
 JOB_TTL_HOURS = float(os.environ.get('JOB_TTL_HOURS', '24'))
 JOB_SWEEP_INTERVAL_SECONDS = float(os.environ.get('JOB_SWEEP_INTERVAL_SECONDS', '3600'))
 
-# Bytes read from the head of an upload to confirm it is really a PDF.
+# Bytes read from the head of an upload to confirm its real type.
 _PDF_SNIFF_BYTES = 1024
+
+# Accepted upload extensions mapped to a short "kind" tag used for on-disk naming
+# and downstream routing (PDF pipeline vs DPR Excel->Excel pipeline).
+_ACCEPTED_EXTENSIONS = {".pdf": "pdf", ".xlsx": "xlsx"}
 
 
 def _looks_like_pdf(header: bytes) -> bool:
@@ -66,6 +78,18 @@ def _looks_like_pdf(header: bytes) -> bool:
     first KB.
     """
     return b'%PDF-' in header[:_PDF_SNIFF_BYTES]
+
+
+def _looks_like_xlsx(header: bytes) -> bool:
+    """
+    True if ``header`` looks like an .xlsx workbook.
+
+    .xlsx is an Office Open XML file — a ZIP container — so it begins with the
+    ZIP local-file-header magic ``PK\\x03\\x04`` (empty/spanned archives use
+    ``PK\\x05\\x06`` / ``PK\\x07\\x08``). We check the ZIP signature by magic
+    bytes rather than trusting the .xlsx extension, mirroring the PDF sniff.
+    """
+    return header[:2] == b'PK' and header[2:4] in (b'\x03\x04', b'\x05\x06', b'\x07\x08')
 
 
 def _process_pdf_with_timeout(pdf_path: Path, timeout: float) -> List[Dict[str, Any]]:
@@ -440,11 +464,15 @@ class ExtractionService:
         for file in files_list:
             if not file.filename:
                 continue
-            
-            # Validate file extension
-            if not file.filename.lower().endswith('.pdf'):
+
+            # Validate file extension against the accepted set (PDF for the
+            # extraction pipeline, XLSX for the DPR Excel->Excel pipeline).
+            ext = Path(file.filename).suffix.lower()
+            kind = _ACCEPTED_EXTENSIONS.get(ext)
+            if kind is None:
                 raise NonPdfFileError(
-                    f"Invalid file type: {file.filename}. Only PDF files are supported."
+                    f"Invalid file type: {file.filename}. "
+                    "Only PDF and Excel (.xlsx) files are supported."
                 )
 
             # Validate actual content by magic bytes, not just the extension
@@ -454,15 +482,20 @@ class ExtractionService:
                 file.stream.seek(0)
             except Exception as e:
                 raise FileValidationError(f"Could not read file {file.filename}: {str(e)}")
-            if not _looks_like_pdf(header):
+            if kind == "pdf" and not _looks_like_pdf(header):
                 raise NonPdfFileError(
                     f"Invalid PDF content: {file.filename} is not a valid PDF file."
                 )
+            if kind == "xlsx" and not _looks_like_xlsx(header):
+                raise NonPdfFileError(
+                    f"Invalid Excel content: {file.filename} is not a valid .xlsx file."
+                )
 
-            # Save file with UUID naming
-            file_name = f"{uuid.uuid4().hex}.pdf"
+            # Save file with UUID naming, preserving the real extension so the
+            # background processor can route by modality.
+            file_name = f"{uuid.uuid4().hex}.{kind}"
             file_path = job.job_folder / file_name
-            
+
             try:
                 file.save(str(file_path))
                 job.add_file(file_path)
@@ -470,9 +503,9 @@ class ExtractionService:
                 logger.info(f"Saved uploaded file: {file_name}")
             except Exception as e:
                 raise FileValidationError(f"Failed to save file {file.filename}: {str(e)}")
-        
+
         if saved_count == 0:
-            raise FileValidationError("No valid PDF files were uploaded")
+            raise FileValidationError("No valid PDF or Excel files were uploaded")
 
         # Store job and persist to disk (lock guards the in-memory dict)
         with self._lock:
@@ -535,6 +568,19 @@ class ExtractionService:
         self._persist_job(job)
 
         try:
+
+            # Route by input modality. The extension set was fixed at upload
+            # time (submit_files only saves .pdf or .xlsx). A pure-xlsx batch is
+            # the DPR Excel->Excel pipeline; a pure-pdf batch is the extraction
+            # pipeline; anything else is a mixed/unsupported batch.
+            exts = {p.suffix.lower() for p in job.files_submitted}
+            if exts == {".xlsx"}:
+                return self._process_dpr_job(job_id, job)
+            if exts != {".pdf"}:
+                raise ProcessingError(
+                    "Mixed or unsupported file types in one job. Upload PDFs and "
+                    "Excel (.xlsx) workbooks in separate batches."
+                )
 
             # Process all PDFs and collect records
             all_records = []
@@ -695,6 +741,117 @@ class ExtractionService:
             self._persist_job(job)
             raise ProcessingError(f"Unexpected error: {str(e)}")
     
+    def _process_dpr_job(self, job_id: str, job: 'ProcessingJob') -> Dict[str, Any]:
+        """Convert a batch of DPR Excel workbooks into an (appended) master.
+
+        Classifies each uploaded .xlsx as either the existing master (at most
+        one) or a raw monthly DPR (one or more), extracts records, appends to the
+        master with (well, date) dedup (newest wins), and writes the combined
+        master .xlsx plus a CSV mirror. QA flags (per-workbook date sanity +
+        cross-month gaps) go to the master's "QA Flags" sheet.
+
+        Runs inside process_job's try/except, so raising ProcessingError here is
+        caught and recorded as job error by the caller.
+        """
+        # Classify uploaded workbooks by content.
+        master_path: Optional[Path] = None
+        raw_paths: List[Path] = []
+        for path in job.files_submitted:
+            fmt = detect_excel_format(path)
+            if fmt == ExcelFormat.DPR_MASTER:
+                if master_path is not None:
+                    raise ProcessingError(
+                        "Multiple master workbooks uploaded; include at most one "
+                        "existing master to append to."
+                    )
+                master_path = path
+            elif fmt == ExcelFormat.DPR_RAW:
+                raw_paths.append(path)
+            else:
+                raise ProcessingError(
+                    f"Unrecognized Excel workbook: {path.name}. Expected a "
+                    "Walter Oil DPR workbook or an existing master."
+                )
+
+        if not raw_paths:
+            raise ProcessingError(
+                "No DPR workbook to convert; upload at least one monthly "
+                "Walter Oil DPR .xlsx."
+            )
+
+        # Extract records and per-workbook date QA flags.
+        all_records: List[Dict[str, Any]] = []
+        qa_flags: List[Dict[str, str]] = []
+        for path in raw_paths:
+            if job.is_cancelled:
+                logger.info(f"Job {job_id} cancelled by user")
+                self._persist_job(job)
+                return {"status": "cancelled", "job_id": job_id}
+            fmt_key = detect_dpr_format_key(path) or DPR_DEFAULT_FORMAT
+            try:
+                recs = extract_dpr_records(path, format_key=fmt_key, source_name=path.name)
+            except Exception as e:
+                raise ProcessingError(f"Failed to extract {path.name}: {str(e)}")
+            all_records.extend(recs)
+            qa_flags.extend(
+                check_workbook_dates(path, format_key=fmt_key, source_name=path.name)
+            )
+            job.files_processed += 1
+            job.records_extracted = len(all_records)
+            self._persist_job(job)
+
+        # Count the master file toward files_processed for progress accuracy.
+        if master_path is not None:
+            job.files_processed += 1
+
+        if not all_records:
+            raise ProcessingError("No records extracted from the uploaded DPR workbook(s).")
+
+        # Merge once to compute cross-month gap flags and summary counts, then
+        # write the master with the complete QA set.
+        merged = merge_master(all_records, existing_master_path=master_path)
+        gap_flags = check_month_gaps(list(merged["date"])) if not merged.empty else []
+        all_qa = qa_flags + gap_flags
+
+        excel_output_path = self.output_folder / f"{job_id}_output.xlsx"
+        csv_output_path = self.output_folder / f"{job_id}_output.csv"
+
+        try:
+            write_dpr_master(
+                all_records,
+                excel_output_path,
+                existing_master_path=master_path,
+                qa_flags=all_qa,
+            )
+            job.output_excel = excel_output_path
+            logger.info(f"DPR master workbook written: {excel_output_path}")
+        except Exception as e:
+            raise ProcessingError(f"Failed to write master workbook: {str(e)}")
+
+        try:
+            merged.to_csv(csv_output_path, index=False)
+            job.output_csv = csv_output_path
+            logger.info(f"DPR CSV written: {csv_output_path}")
+        except Exception as e:
+            raise ProcessingError(f"Failed to write CSV file: {str(e)}")
+
+        job.records_extracted = len(all_records)
+        job.records_valid = len(merged)
+        job.records_invalid = 0
+        job.unique_wells = int(merged["well"].nunique()) if not merged.empty else 0
+
+        job.set_completed()
+        self._persist_job(job)
+        return {
+            "status": "success",
+            "job_id": job_id,
+            "records": job.records_valid,
+            "unique_wells": job.unique_wells,
+            "invalid_records": 0,
+            "excel_url": f"/api/download/{job_id}/output.xlsx",
+            "csv_url": f"/api/download/{job_id}/output.csv",
+        }
+
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
         """
         Get status of a processing job.

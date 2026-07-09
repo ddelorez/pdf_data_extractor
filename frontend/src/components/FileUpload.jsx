@@ -55,8 +55,11 @@ const FileUpload = ({
   return (
     <div className="file-upload-container">
       <div className="upload-section">
-        <h2>Upload PDF Files</h2>
-        <p className="subtitle">Upload production data PDFs for extraction</p>
+        <h2>Upload Files</h2>
+        <p className="subtitle">
+          Upload production data PDFs to extract, or Walter Oil DPR Excel
+          workbooks to convert (include an existing master to append to it)
+        </p>
 
         {/* Drag and Drop Zone */}
         <div
@@ -67,7 +70,7 @@ const FileUpload = ({
           onClick={handleClick}
           role="button"
           tabIndex="0"
-          aria-label="Drag and drop PDF files or click to select"
+          aria-label="Drag and drop PDF or Excel files or click to select"
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               handleClick();
@@ -78,9 +81,9 @@ const FileUpload = ({
             <svg className="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            <h3>Drag and drop your PDFs here</h3>
+            <h3>Drag and drop your files here</h3>
             <p>or click to select files</p>
-            <p className="file-info">Supported: PDF files (Max 50 MB each)</p>
+            <p className="file-info">Supported: PDF and Excel .xlsx files (Max 50 MB each)</p>
           </div>
         </div>
 
@@ -89,7 +92,7 @@ const FileUpload = ({
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".pdf,application/pdf"
+          accept=".pdf,application/pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           onChange={handleFileSelect}
           style={{ display: 'none' }}
           aria-hidden="true"

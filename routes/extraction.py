@@ -71,21 +71,22 @@ def health_check():
 @extraction_bp.route('/extract', methods=['POST'])
 def extract_files():
     """
-    Upload PDF files for extraction.
-    
-    Accepts: multipart/form-data with file(s) field
-    
+    Upload files for processing.
+
+    Accepts PDFs (extraction pipeline) or .xlsx workbooks (DPR Excel->Excel
+    pipeline) as multipart/form-data in the file(s) field.
+
     Returns:
         JSON: {
             "status": "processing",
             "job_id": "uuid",
             "files_received": N
         }
-    
+
     Errors:
         400: No files provided or other validation failure
         413: File too large
-        418: A non-PDF file was uploaded (this service only brews PDFs)
+        418: An unsupported file type was uploaded (neither PDF nor .xlsx)
         500: Server error
     """
     try:
@@ -119,9 +120,10 @@ def extract_files():
         }), 202  # 202 Accepted
     
     except NonPdfFileError as e:
-        # Non-PDF upload: this service brews PDFs, not whatever you sent it.
-        # Caught before FileValidationError (its parent) so it wins the 418.
-        logger.warning(f"Non-PDF upload rejected: {e}")
+        # Unsupported upload type (neither PDF nor .xlsx): this service brews
+        # PDFs and Excel, not whatever you sent it. Caught before
+        # FileValidationError (its parent) so it wins the 418.
+        logger.warning(f"Unsupported upload rejected: {e}")
         return jsonify({
             "status": "error",
             "message": str(e)

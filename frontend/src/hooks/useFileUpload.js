@@ -3,7 +3,21 @@ import { uploadFiles as uploadFilesAPI } from '../services/api';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB per file
 const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100 MB aggregate (matches backend MAX_CONTENT_LENGTH)
-const ALLOWED_TYPES = ['application/pdf'];
+// PDFs feed the extraction pipeline; .xlsx workbooks feed the DPR Excel->Excel
+// pipeline. The backend validates real content by magic bytes; this is UX only.
+const ALLOWED_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
+const ALLOWED_EXTENSIONS = ['.pdf', '.xlsx'];
+
+// Browsers often report an empty MIME type for .xlsx (especially via drag-drop),
+// so accept a file if EITHER its extension or its MIME type is recognised.
+const isAllowedFile = (file) => {
+  const name = (file.name || '').toLowerCase();
+  const byExtension = ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
+  return byExtension || ALLOWED_TYPES.includes(file.type);
+};
 
 export const useFileUpload = () => {
   const [files, setFiles] = useState([]);
@@ -19,8 +33,8 @@ export const useFileUpload = () => {
 
     filesToValidate.forEach((file) => {
       // Check file type
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        errors.push(`${file.name}: Not a PDF file`);
+      if (!isAllowedFile(file)) {
+        errors.push(`${file.name}: Not a PDF or Excel (.xlsx) file`);
       }
 
       // Check file size
