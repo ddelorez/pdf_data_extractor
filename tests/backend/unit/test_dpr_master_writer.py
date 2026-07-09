@@ -5,13 +5,19 @@ from datetime import date, datetime
 import pytest
 from openpyxl import load_workbook
 
-from src.config import DPR_MASTER_COLUMNS
+from openpyxl import load_workbook as _load_wb
+
+from src.config import DPR_MASTER_COLUMNS, DPR_MASTER_DATA_SHEET
 from src.output.dpr_master_writer import (
     merge_master,
     write_dpr_master,
     load_existing_master,
+    MasterReadError,
 )
-from tests.backend.fixtures.dpr_builder import build_master_workbook
+from tests.backend.fixtures.dpr_builder import (
+    build_master_workbook,
+    build_plain_workbook,
+)
 
 
 def _rec(well, d, **fields):
@@ -51,6 +57,35 @@ class TestMergeMaster:
         df = merge_master([_rec("A-1", date(2026, 4, 1), **{"Daily Oil": 5.0})])
         assert len(df) == 1
         assert df.iloc[0]["Daily Oil"] == 5.0
+
+
+class TestLoadExistingMasterSafety:
+    def test_unreadable_master_raises(self, tmp_path):
+        # HIGH-2: a workbook with no Data sheet must fail loud, not silently
+        # return an empty master (which would erase history).
+        plain = build_plain_workbook(tmp_path / "plain.xlsx")
+        with pytest.raises(MasterReadError):
+            load_existing_master(plain)
+
+    def test_bad_date_row_flagged_not_silent(self, tmp_path):
+        # HIGH-2: rows whose date can't be parsed are excluded, but the loss is
+        # surfaced as a QA flag rather than dropped silently.
+        master = build_master_workbook(
+            tmp_path / "master.xlsx",
+            [
+                _rec("A-1", date(2026, 4, 1), **{"Daily Oil": 1.0}),
+                _rec("A-2", date(2026, 4, 1), **{"Daily Oil": 2.0}),
+            ],
+        )
+        # Corrupt the second data row's date cell (col 2, row 3) to text.
+        wb = _load_wb(master)
+        wb[DPR_MASTER_DATA_SHEET].cell(row=3, column=2, value="not-a-date")
+        wb.save(str(master))
+
+        flags = []
+        df = load_existing_master(master, qa_flags=flags)
+        assert len(df) == 1  # the bad row is excluded
+        assert any("unparseable" in f["Concern"] for f in flags)
 
 
 class TestWriteDprMaster:
